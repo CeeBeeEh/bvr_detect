@@ -6,14 +6,11 @@ pub mod bvr_data;
 mod send_channels;
 
 pub mod bvr_detect {
-    use crate::{detection_processing, utils};
-
-    use std::{env, sync::mpsc, sync::mpsc::{Receiver, Sender}, sync::LazyLock, thread, time::Instant};
+    use std::{sync::mpsc, sync::LazyLock, thread, time::Instant};
     use log;
-    use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, Error, ExecutionProvider,
-              Session, SessionOutputs, TensorRTExecutionProvider};
+    use ort::Error;
     use parking_lot::Mutex;
-    use crate::bvr_data::{BvrDetection, BvrImage, DetectorType, DeviceType, ModelConfig};
+    use crate::bvr_data::{BvrDetection, BvrImage, DetectorType, ModelConfig};
     use crate::detectors::{detector_onnx, detector_python};
     use crate::send_channels::{DetectionState, SendState};
 
@@ -89,7 +86,6 @@ pub mod bvr_detect {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
     use crate::bvr_detect::{detect, init_detector};
     use std::path::Path;
     use std::sync::mpsc;
@@ -98,13 +94,11 @@ mod tests {
 
     #[tokio::test]
     async fn object_detection() {
-        let current_dir = env::current_dir().unwrap();
-
         /////////////////////
         // Testing variables
         let loop_count: u32 = 5;
         let onnx_path = "../models/yolov9s.onnx".to_string();
-        let lib_path= "../onnxruntime_linux_x64_gpu/libonnxruntime.so.1.19.0".to_string();
+        let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.19.0".to_string();
         let classes_path = "../models/labels_80.txt".to_string();
         let image_path = "../test_images/8_people.jpg";
         /////////////////////

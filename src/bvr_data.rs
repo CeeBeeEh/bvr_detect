@@ -39,14 +39,14 @@ impl ModelConfig {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum DetectorType {
-    #[default] Onnx,
+    #[default] Native,
     Python,
 }
 
 impl DetectorType {
     pub fn from_str(infer_lang: &str) -> Option<Self> {
         match infer_lang.to_lowercase().as_str() {
-            "native" => Some(DetectorType::Onnx),
+            "native" => Some(DetectorType::Native),
             "python" => Some(DetectorType::Python),
             _ => None,
         }
@@ -54,14 +54,14 @@ impl DetectorType {
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            DetectorType::Onnx => "Native",
+            DetectorType::Native => "Native",
             DetectorType::Python => "Python",
         }
     }
 
     pub fn as_str_lowercase(&self) -> &'static str {
         match self {
-            DetectorType::Onnx => "native",
+            DetectorType::Native => "native",
             DetectorType::Python => "python",
         }
     }

@@ -1,12 +1,10 @@
-use std::env;
 use std::time::Instant;
-use image::{DynamicImage, GenericImageView};
 use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, ExecutionProvider, Session, SessionOutputs, TensorRTExecutionProvider};
 //use pyo3::{types, PyResult, Python};
 //use pyo3::prelude::*;
 //use pyo3::types::{PyBytes, PyModule};
 use crate::{detection_processing, utils};
-use crate::bvr_data::{BvrDetection, DeviceType, ModelConfig};
+use crate::bvr_data::{DeviceType, ModelConfig};
 use crate::send_channels::DetectionState;
 
 pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
