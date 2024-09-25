@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Clone)]
 pub struct ModelConfig {
     pub onnx_path: String,
-    pub lib_path: String,
+    pub ort_lib_path: String,
     pub classes_path: String,
     pub device_type: DeviceType,
     pub detector_type: ProcessingType,
@@ -13,12 +13,12 @@ pub struct ModelConfig {
 }
 
 impl ModelConfig {
-    pub fn new(onnx_path: String, lib_path: String, classes_path: String,
+    pub fn new(onnx_path: String, ort_lib_path: String, classes_path: String,
                device_type: DeviceType, detector_type: ProcessingType,
                width: u32, height: u32) -> Self {
         Self {
             onnx_path,
-            lib_path,
+            ort_lib_path,
             classes_path,
             device_type,
             detector_type,
@@ -32,8 +32,13 @@ impl ModelConfig {
     }
 
     pub fn to_string(&self) -> String {
-        format!("Onnx Path: {}\nClasses Path: {}\nDevice Type (execution provider): {:?}\nModel input resolution: {}x{}",
-                 self.onnx_path, self.classes_path, self.device_type, self.width, self.height)
+        format!("Onnx Path: {}\n\
+        Classes Path: {}\n\
+        OnnxRuntime Lib Path: {}\n\
+        Device Type (execution provider): {:?}\n\
+        Model input resolution: {}x{}",
+                self.onnx_path, self.classes_path, self.ort_lib_path,
+                self.device_type, self.width, self.height)
     }
 }
 

@@ -1,17 +1,17 @@
 use std::time::Instant;
 use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, ExecutionProvider, Session, SessionOutputs, TensorRTExecutionProvider};
-//use pyo3::{types, PyResult, Python};
-//use pyo3::prelude::*;
-//use pyo3::types::{PyBytes, PyModule};
+use pyo3::{types, PyResult, Python};
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyModule};
 use crate::{detection_processing, utils};
-use crate::bvr_data::{DeviceType, ModelConfig};
+use crate::bvr_data::{BvrDetection, DeviceType, ModelConfig};
 use crate::send_channels::DetectionState;
 
 pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
     //OnceCell::new()
 
     // Dynamically load the library from given path
-    ort::init_from(model_details.lib_path).commit()?;
+    ort::init_from(model_details.ort_lib_path).commit()?;
 
     let session_builder = Session::builder()?;
 
@@ -94,13 +94,18 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
 }
 
 pub fn detector_python(detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
-/*    let python_file = std::fs::read_to_string("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/detector_2.py")?;
+    /*
+    -------------- DO NOT USE --------------
+    THIS IS NOT READY AND WILL CAUSE A PANIC
+    */
+
+    let python_file = std::fs::read_to_string("../detector.py")?;
 
     Python::with_gil(|py| -> PyResult<()> {
         let sys = py.import_bound("sys")?;
         let path = sys.getattr("path")?;
-        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/venv/lib/python3.12/site-packages/",))?;  // append my venv path
-        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/",))?;  // append my venv path
+        path.call_method1("append", ("../bvr_detector_lib_python/venv/lib/python3.12/site-packages/",))?;  // append my venv path
+        path.call_method1("append", ("../bvr_detector_lib_python/",))?;  // append my venv path
 
         let p_module = PyModule::from_code_bound(py, &python_file, "detector.py", "detector")?;
 
@@ -144,7 +149,7 @@ pub fn detector_python(detection_state: DetectionState, model_details: ModelConf
             detection_state.det_tx.send(detections).unwrap();
         }
     }).expect("TODO: panic message");
-*/
+
     Ok(())
 }
 

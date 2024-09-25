@@ -105,7 +105,7 @@ mod tests {
 
         let model_details = ModelConfig {
             onnx_path,
-            lib_path,
+            ort_lib_path: lib_path,
             classes_path,
             device_type: DeviceType::CUDA,
             detector_type: ProcessingType::Native,
