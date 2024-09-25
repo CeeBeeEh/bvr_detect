@@ -10,7 +10,7 @@ pub mod bvr_detect {
     use log;
     use ort::Error;
     use parking_lot::Mutex;
-    use crate::bvr_data::{BvrDetection, BvrImage, DetectorType, ModelConfig};
+    use crate::bvr_data::{BvrDetection, BvrImage, ProcessingType, ModelConfig};
     use crate::detectors::{detector_onnx, detector_python};
     use crate::send_channels::{DetectionState, SendState};
 
@@ -52,10 +52,10 @@ pub mod bvr_detect {
 
             thread::spawn(move || {
                 match model_details.detector_type {
-                    DetectorType::Onnx => {
+                    ProcessingType::Native => {
                         detector_onnx(is_test, detection_state, model_details).expect("Error in detector_onnx function");
                     }
-                    DetectorType::Python => {
+                    ProcessingType::Python => {
                         detector_python(detection_state, model_details).expect("Error in detector_opencv function");
                     }
                 };
@@ -90,7 +90,7 @@ mod tests {
     use std::path::Path;
     use std::sync::mpsc;
     use std::time::Instant;
-    use crate::bvr_data::{BvrDetection, BvrImage, DetectorType, DeviceType, ModelConfig};
+    use crate::bvr_data::{BvrDetection, BvrImage, ProcessingType, DeviceType, ModelConfig};
 
     #[tokio::test]
     async fn object_detection() {
@@ -108,7 +108,7 @@ mod tests {
             lib_path,
             classes_path,
             device_type: DeviceType::CUDA,
-            detector_type: DetectorType::Onnx,
+            detector_type: ProcessingType::Native,
             width: 640,
             height: 640,
         };

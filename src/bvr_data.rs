@@ -7,14 +7,14 @@ pub struct ModelConfig {
     pub lib_path: String,
     pub classes_path: String,
     pub device_type: DeviceType,
-    pub detector_type: DetectorType,
+    pub detector_type: ProcessingType,
     pub width: u32,
     pub height: u32,
 }
 
 impl ModelConfig {
     pub fn new(onnx_path: String, lib_path: String, classes_path: String,
-               device_type: DeviceType, detector_type: DetectorType,
+               device_type: DeviceType, detector_type: ProcessingType,
                width: u32, height: u32) -> Self {
         Self {
             onnx_path,
@@ -38,31 +38,31 @@ impl ModelConfig {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub enum DetectorType {
+pub enum ProcessingType {
     #[default] Native,
     Python,
 }
 
-impl DetectorType {
+impl ProcessingType {
     pub fn from_str(infer_lang: &str) -> Option<Self> {
         match infer_lang.to_lowercase().as_str() {
-            "native" => Some(DetectorType::Native),
-            "python" => Some(DetectorType::Python),
+            "native" => Some(ProcessingType::Native),
+            "python" => Some(ProcessingType::Python),
             _ => None,
         }
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            DetectorType::Native => "Native",
-            DetectorType::Python => "Python",
+            ProcessingType::Native => "Native",
+            ProcessingType::Python => "Python",
         }
     }
 
     pub fn as_str_lowercase(&self) -> &'static str {
         match self {
-            DetectorType::Native => "native",
-            DetectorType::Python => "python",
+            ProcessingType::Native => "native",
+            ProcessingType::Python => "python",
         }
     }
 }
