@@ -1,16 +1,18 @@
 use std::time::Instant;
 use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, ExecutionProvider, Session, SessionOutputs, TensorRTExecutionProvider};
-use pyo3::{types, PyResult, Python};
-use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyModule};
+//use pyo3::{types, PyResult, Python};
+//use pyo3::prelude::*;
+//use pyo3::types::{PyBytes, PyModule};
 use crate::{detection_processing, utils};
-use crate::bvr_data::{BvrDetection, DeviceType, ModelConfig};
+use crate::bvr_data::{DeviceType, ModelConfig};
 use crate::send_channels::DetectionState;
 
 pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
     //OnceCell::new()
 
-    // Dynamically load the library from given path
+    let mut threshold = model_details.threshold;
+
+    // Dynamically load the onnxruntime library from given path
     ort::init_from(model_details.ort_lib_path).commit()?;
 
     let session_builder = Session::builder()?;
@@ -63,6 +65,10 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
         };
         let detect_time = Instant::now();
 
+        if bvr_image.threshold != 0.0 {
+            threshold = bvr_image.threshold;
+        }
+
         let (img_width, img_height, input) = detection_processing::process_image(bvr_image, model_details.width, model_details.height);
         let mut _detect_elapsed = detect_time.elapsed();
 
@@ -83,7 +89,7 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
         let detections = detection_processing::process_predictions(&output, &classes_list,
                                                                    model_details.width as f32, model_details.height as f32,
                                                                    img_width as f32, img_height as f32,
-                                                                   output_shape, detection_time);
+                                                                   output_shape, detection_time, threshold);
 
         _detect_elapsed = utils::trace(is_test, "TIME", "Postprocessing", detect_time, _detect_elapsed);
 
@@ -93,7 +99,7 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
     }
 }
 
-pub fn detector_python(detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
+/*pub fn detector_python(detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
     /*
     -------------- DO NOT USE --------------
     THIS IS NOT READY AND WILL CAUSE A PANIC
@@ -151,5 +157,5 @@ pub fn detector_python(detection_state: DetectionState, model_details: ModelConf
     }).expect("TODO: panic message");
 
     Ok(())
-}
+}*/
 

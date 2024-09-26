@@ -47,7 +47,8 @@ pub fn process_image(bvr_image: BvrImage, width: u32, height: u32) -> (u32, u32,
 pub(crate) fn process_predictions(output: &Array<f32, IxDyn>, classes_list: &Vec<String>,
                                   width_f32: f32, height_f32: f32,
                                   img_width: f32, img_height: f32,
-                                  output_shape: &[usize], detection_time: u128) -> Vec<BvrDetection> {
+                                  output_shape: &[usize], detection_time: u128,
+                                  threshold: f32) -> Vec<BvrDetection> {
     let mut boxes = Vec::new();
 
     let now = Instant::now();
@@ -68,7 +69,7 @@ pub(crate) fn process_predictions(output: &Array<f32, IxDyn>, classes_list: &Vec
         rowc.push((now.elapsed() - _detect_elapsed).as_nanos());
         _detect_elapsed = now.elapsed();
 
-        if prob < 0.5 {
+        if prob < threshold {
             continue;
         }
 
@@ -104,7 +105,7 @@ pub(crate) fn process_predictions(output: &Array<f32, IxDyn>, classes_list: &Vec
         let i = boxes.remove(0);
         let mut det: BvrDetection = Default::default();
         det.bbox = i.0;
-        //det.label = classes_list[i.1];
+        det.label = i.1.to_string();
         det.confidence = i.2;
         det.last_inference_time = detection_time;
         detections.push(det);

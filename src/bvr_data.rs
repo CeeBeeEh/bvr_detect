@@ -8,6 +8,7 @@ pub struct ModelConfig {
     pub classes_path: String,
     pub device_type: DeviceType,
     pub detector_type: ProcessingType,
+    pub threshold: f32,
     pub width: u32,
     pub height: u32,
 }
@@ -15,13 +16,14 @@ pub struct ModelConfig {
 impl ModelConfig {
     pub fn new(onnx_path: String, ort_lib_path: String, classes_path: String,
                device_type: DeviceType, detector_type: ProcessingType,
-               width: u32, height: u32) -> Self {
+               threshold: f32, width: u32, height: u32) -> Self {
         Self {
             onnx_path,
             ort_lib_path,
             classes_path,
             device_type,
             detector_type,
+            threshold,
             width,
             height,
         }
@@ -36,9 +38,10 @@ impl ModelConfig {
         Classes Path: {}\n\
         OnnxRuntime Lib Path: {}\n\
         Device Type (execution provider): {:?}\n\
-        Model input resolution: {}x{}",
-                self.onnx_path, self.classes_path, self.ort_lib_path,
-                self.device_type, self.width, self.height)
+        Model Input Resolution: {}x{}\n\
+        Detection Threshold: {}",
+        self.onnx_path, self.classes_path, self.ort_lib_path,
+        self.device_type, self.width, self.height, self.threshold)
     }
 }
 
@@ -114,20 +117,18 @@ pub struct BvrImage {
     pub image: DynamicImage,
     pub img_width: i32,
     pub img_height: i32,
-    pub conf_thres: f64,
-    pub iou_thres: f64,
+    pub threshold: f32,
     pub augment: bool,
 }
 
 impl BvrImage {
-    pub fn new(image: DynamicImage, conf_thres: f64, iou_thres: f64, augment: bool) -> Self {
+    pub fn new(image: DynamicImage, threshold: f32, augment: bool) -> Self {
         let (img_width, img_height) = image.dimensions();
         Self {
             image,
             img_width: img_width as i32,
             img_height: img_height as i32,
-            conf_thres,
-            iou_thres,
+            threshold,
             augment,
         }
     }

@@ -11,7 +11,7 @@ pub mod bvr_detect {
     use ort::Error;
     use parking_lot::Mutex;
     use crate::bvr_data::{BvrDetection, BvrImage, ProcessingType, ModelConfig};
-    use crate::detectors::{detector_onnx, detector_python};
+    use crate::detectors::detector_onnx;
     use crate::send_channels::{DetectionState, SendState};
 
     pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -56,7 +56,8 @@ pub mod bvr_detect {
                         detector_onnx(is_test, detection_state, model_details).expect("Error in detector_onnx function");
                     }
                     ProcessingType::Python => {
-                        detector_python(detection_state, model_details).expect("Error in detector_opencv function");
+                        // DO NOTHING FOR NOW
+                        //detector_python(detection_state, model_details).expect("Error in detector_opencv function");
                     }
                 };
             });
@@ -109,6 +110,7 @@ mod tests {
             classes_path,
             device_type: DeviceType::CUDA,
             detector_type: ProcessingType::Native,
+            threshold: 0.4,
             width: 640,
             height: 640,
         };
@@ -122,8 +124,7 @@ mod tests {
             image: image::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(image_path)).unwrap(),
             img_width: 1280,
             img_height: 720,
-            conf_thres: 0.7,
-            iou_thres: 0.5,
+            threshold: 0.5,
             augment: false,
         };
 
