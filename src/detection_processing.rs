@@ -1,14 +1,13 @@
-use std::time::Instant;
 use image::GenericImageView;
 use image::imageops::FilterType;
-use ndarray::{Array, Ix4, IxDyn};
-use crate::bvr_data::{BvrBox, BvrDetection, BvrImage};
+use ndarray::{s, Array, Axis, Ix4, IxDyn};
+use crate::bvr_data::{BvrBoxF32, BvrDetection, BvrImage};
 
-fn intersection(box1: &BvrBox, box2: &BvrBox) -> i32 {
+fn intersection(box1: &BvrBoxF32, box2: &BvrBoxF32) -> f32 {
     (box1.x2.min(box2.x2) - box1.x1.max(box2.x1)) * (box1.y2.min(box2.y2) - box1.y1.max(box2.y1))
 }
 
-fn union(box1: &BvrBox, box2: &BvrBox) -> i32 {
+fn union(box1: &BvrBoxF32, box2: &BvrBoxF32) -> f32 {
     ((box1.x2 - box1.x1) * (box1.y2 - box1.y1)) + ((box2.x2 - box2.x1) * (box2.y2 - box2.y1)) - intersection(box1, box2)
 }
 
@@ -41,60 +40,46 @@ pub fn process_image(bvr_image: BvrImage, width: u32, height: u32) -> (u32, u32,
         input[[0, 2, y, x]] = (b as f32) / 255.;
     }
 
+    drop(bvr_image.image);
+
     (img_width, img_height, input)
 }
 
 pub(crate) fn process_predictions(output: &Array<f32, IxDyn>, classes_list: &Vec<String>,
                                   width_f32: f32, height_f32: f32,
                                   img_width: f32, img_height: f32,
-                                  output_shape: &[usize], detection_time: u128,
+                                  detection_time: u128,
                                   threshold: f32) -> Vec<BvrDetection> {
     let mut boxes = Vec::new();
+    let output = output.slice(s![.., .., 0]);
 
-    let now = Instant::now();
-
-    let mut rowc: Vec<u128> = Vec::new();
-    let mut boxc: Vec<u128> = Vec::new();
-    let mut boxp: Vec<u128> = Vec::new();
-
-    let reshaped_output = output
-        .to_shape((output_shape[0], output_shape[1]))
-        .expect("Failed to reshape the output");
-    for detection in reshaped_output.outer_iter() {
-        let mut _detect_elapsed = now.elapsed();
-
-        let prob = detection[4];
-        let class_id = detection[5] as i32;
-
-        rowc.push((now.elapsed() - _detect_elapsed).as_nanos());
-        _detect_elapsed = now.elapsed();
-
+    for row in output.axis_iter(Axis(0)) {
+        let row: Vec<_> = row.iter().copied().collect();
+        let (class_id, prob) = row
+            .iter()
+            .skip(4) // skip bounding box coordinates
+            .enumerate()
+            .map(|(index, value)| (index, *value))
+            .reduce(|accum, row| if row.1 > accum.1 { row } else { accum })
+            .unwrap();
         if prob < threshold {
             continue;
         }
-
-        let label = classes_list[class_id as usize].as_str();
-        let xc = detection[0] / width_f32 * img_width;
-        let yc = detection[1] / height_f32 * img_height;
-        let w = detection[2] / width_f32 * img_width;
-        let h = detection[3] / height_f32 * img_height;
-        boxc.push((now.elapsed() - _detect_elapsed).as_nanos());
-        _detect_elapsed = now.elapsed();
-
+        let label = &classes_list[class_id];
+        let xc = row[0] / width_f32 * img_width;
+        let yc = row[1] / height_f32 * img_height;
+        let w = row[2] / width_f32 * img_width;
+        let h = row[3] / height_f32 * img_height;
         boxes.push((
-            BvrBox {
-                x1: (xc - w / 2.0).round() as i32,
-                y1: (yc - h / 2.0).round() as i32,
-                x2: (xc + w / 2.0).round() as i32,
-                y2: (yc + h / 2.0).round() as i32,
-                width: w.round() as i32,
-                height: h.round() as i32,
+            BvrBoxF32 {
+                x1: xc - w / 2.0,
+                y1: yc - h / 2.0,
+                x2: xc + w / 2.0,
+                y2: yc + h / 2.0,
             },
             label,
-            prob,
+            prob
         ));
-        boxp.push((now.elapsed() - _detect_elapsed).as_nanos());
-        _detect_elapsed = now.elapsed();
     }
 
     boxes.sort_by(|box1, box2| box2.2.total_cmp(&box1.2));
@@ -104,7 +89,7 @@ pub(crate) fn process_predictions(output: &Array<f32, IxDyn>, classes_list: &Vec
     while !boxes.is_empty() {
         let i = boxes.remove(0);
         let mut det: BvrDetection = Default::default();
-        det.bbox = i.0;
+        det.bbox = i.0.to_bvr_box();
         det.label = i.1.to_string();
         det.confidence = i.2;
         det.last_inference_time = detection_time;

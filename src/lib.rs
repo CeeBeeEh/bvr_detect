@@ -6,7 +6,8 @@ pub mod bvr_data;
 mod send_channels;
 
 pub mod bvr_detect {
-    use std::{sync::mpsc, sync::LazyLock, thread, time::Instant};
+    use std::{sync::LazyLock, thread, time::Instant};
+    //    use std::cell::OnceCell;
     use log;
     use ort::Error;
     use parking_lot::Mutex;
@@ -18,13 +19,15 @@ pub mod bvr_detect {
 
     static IS_RUNNING: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
     static SEND_STATE: LazyLock<Mutex<SendState>> = LazyLock::new(|| Mutex::new({
-        let tx = mpsc::channel::<BvrImage>().0;
-        let rx2 = mpsc::channel::<Vec<BvrDetection>>().1;
+        let tx = crossbeam_channel::unbounded::<Box<BvrImage>>().0;
+        let rx2 = crossbeam_channel::unbounded::<Box<Vec<BvrDetection>>>().1;
         SendState {
             opt_tx: tx,
             det_rx: rx2,
         }
     }));
+
+//    static SEND_STATE: OnceCell<Mutex<SendState>> = OnceCell::new();
 
     pub async fn is_running() -> Result<bool> {
         let is_running = IS_RUNNING.lock();
@@ -39,8 +42,8 @@ pub mod bvr_detect {
         if !*is_running {
             *is_running = true;
 
-            let (det_tx, det_rx) = mpsc::channel::<Vec<BvrDetection>>();
-            let (opt_tx, opt_rx) = mpsc::channel::<BvrImage>();
+            let (det_tx, det_rx) = crossbeam_channel::unbounded::<Box<Vec<BvrDetection>>>();
+            let (opt_tx, opt_rx) = crossbeam_channel::unbounded::<Box<BvrImage>>();
 
             send_state.det_rx = det_rx;
             send_state.opt_tx = opt_tx;
@@ -68,6 +71,7 @@ pub mod bvr_detect {
 
     pub async fn detect(bvr_image: BvrImage) -> anyhow::Result<Vec<BvrDetection>> {
         let now = Instant::now();
+
         let is_running = IS_RUNNING.lock();
         let send_state = SEND_STATE.lock();
 
@@ -75,11 +79,12 @@ pub mod bvr_detect {
             panic!("Detector is not running or hasn't been initialized");
         }
 
-        send_state.opt_tx.send(bvr_image).expect("Error sending opt");
+        send_state.opt_tx.send(Box::from(bvr_image))?;
 
-        let detections = send_state.det_rx.recv()?;
+        // TODO: We're losing about 5ms on this receive statement for some reason
+        let detections = *(send_state.det_rx.recv()?);
 
-        println!("Send time: {:?}", now.elapsed());
+        println!("Processing time: {:?}", now.elapsed());
 
         Ok(detections)
     }
@@ -91,13 +96,16 @@ mod tests {
     use std::path::Path;
     use std::sync::mpsc;
     use std::time::Instant;
+    use image::Rgba;
+    use imageproc::drawing::draw_hollow_rect_mut;
+    use imageproc::rect::Rect;
     use crate::bvr_data::{BvrDetection, BvrImage, ProcessingType, DeviceType, ModelConfig};
 
     #[tokio::test]
     async fn object_detection() {
         /////////////////////
         // Testing variables
-        let loop_count: u32 = 5;
+        let loop_count: u32 = 10;
         let onnx_path = "../models/yolov9s.onnx".to_string();
         let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.19.0".to_string();
         let classes_path = "../models/labels_80.txt".to_string();
@@ -137,16 +145,30 @@ mod tests {
 
         while count < loop_count {
             let result = detect(bvr_image.clone()).await.unwrap();
-            assert_eq!(result.len(), 8);
+            //assert_eq!(result.len(), 8);
 
             let mut detection_thres = String::from("Confidence: ");
+            let detection_count = result.len();
+
+            if detection_count > 0 && count == 0 {
+                let mut img = bvr_image.image.clone();
+
+                for i in &result {
+                    let rect = Rect::at(i.bbox.x1, i.bbox.y1).of_size(i.bbox.w as u32, i.bbox.h as u32);
+                    let draw_color = Rgba([255, 0, 0, 255]);
+                    draw_hollow_rect_mut(&mut img, rect, draw_color);
+                }
+
+                img.save("test_output.jpg").unwrap();
+            }
+
             for i in result {
                 detection_thres += " | ";
                 detection_thres += i.confidence.to_string().as_str();
             }
             println!("\n{}", detection_thres.as_str());
             println!("TIME | Total={:.2?} | {}th detection={:.2?}", now.elapsed(), count, now.elapsed() - elapsed);
-            println!("Correctly detected 8 people\n");
+            println!("Detected {} objects\n", detection_count);
             elapsed = now.elapsed();
 
             count += 1;

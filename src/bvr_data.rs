@@ -135,13 +135,33 @@ impl BvrImage {
 }
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct BvrBoxF32 {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+}
+
+impl BvrBoxF32 {
+    pub fn to_bvr_box(&self) -> BvrBox {
+        BvrBox {
+            x1: self.x1.round() as i32,
+            y1: self.y1.round() as i32,
+            x2: self.x2.round() as i32,
+            y2: self.y2.round() as i32,
+            w: self.x2.round() as i32 - self.x1.round() as i32,
+            h: self.y2.round() as i32 - self.y1.round() as i32,
+        }
+    }
+}
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BvrBox {
     pub x1: i32,
     pub y1: i32,
     pub x2: i32,
     pub y2: i32,
-    pub width: i32,
-    pub height: i32,
+    pub w: i32,
+    pub h: i32,
 }
 
 impl BvrBox {
@@ -151,13 +171,13 @@ impl BvrBox {
             y1,
             x2,
             y2,
-            width: x2 - x1,
-            height: y2 - y1,
+            w: x2 - x1,
+            h: y2 - y1,
         }
     }
 
     pub fn area(&self) -> i32 {
-        self.width * self.height
+        self.w * self.h
     }
 
     pub fn contains(&self, x: i32, y: i32) -> bool {
@@ -165,10 +185,10 @@ impl BvrBox {
     }
 
     pub fn scale(&mut self, factor: f32) {
-        self.width = (self.width as f32 * factor) as i32;
-        self.height = (self.height as f32 * factor) as i32;
-        self.x2 = self.x1 + self.width;
-        self.y2 = self.y1 + self.height;
+        self.w = (self.w as f32 * factor) as i32;
+        self.h = (self.h as f32 * factor) as i32;
+        self.x2 = self.x1 + self.w;
+        self.y2 = self.y1 + self.h;
     }
 }
 

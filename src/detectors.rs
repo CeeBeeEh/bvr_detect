@@ -8,7 +8,7 @@ use crate::bvr_data::{DeviceType, ModelConfig};
 use crate::send_channels::DetectionState;
 
 pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
-    //OnceCell::new()
+    //Consider using __OnceCell__ for session persistence
 
     let mut threshold = model_details.threshold;
 
@@ -56,7 +56,7 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
 
     loop {
         // MESSAGE LOOP STARTS HERE
-        let bvr_image = match detection_state.opt_rx.recv() {
+        let bvr_image_box = match detection_state.opt_rx.recv() {
             Ok(msg) => msg,
             Err(err) => {
                 log::error!("bvr_detect: Failed to receive image: {}", err);
@@ -64,6 +64,8 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
             }
         };
         let detect_time = Instant::now();
+
+        let bvr_image = *bvr_image_box;
 
         if bvr_image.threshold != 0.0 {
             threshold = bvr_image.threshold;
@@ -76,26 +78,24 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
 
         // Run ONNX inference
         let outputs: SessionOutputs = session.run(inputs![&input_info[0].name => input.view()]?)?;
-        let detection_time = (detect_time.elapsed() - _detect_elapsed).as_micros();
 
+        let detection_time = (detect_time.elapsed() - _detect_elapsed).as_micros();
         _detect_elapsed = utils::trace(is_test, "TIME", "Detection run", detect_time, _detect_elapsed);
 
         let output = outputs[output_info[0].name.as_str()].try_extract_tensor::<f32>()?.t().into_owned();
-
-        let output_shape = output.shape();
 
         _detect_elapsed = utils::trace(is_test, "TIME", "Outputs", detect_time, _detect_elapsed);
 
         let detections = detection_processing::process_predictions(&output, &classes_list,
                                                                    model_details.width as f32, model_details.height as f32,
                                                                    img_width as f32, img_height as f32,
-                                                                   output_shape, detection_time, threshold);
+                                                                   detection_time, threshold);
 
         _detect_elapsed = utils::trace(is_test, "TIME", "Postprocessing", detect_time, _detect_elapsed);
 
-        _detect_elapsed = utils::trace(is_test, "TIME", "NMS", detect_time, _detect_elapsed);
+        detection_state.det_tx.send(Box::from(detections))?;
 
-        detection_state.det_tx.send(detections)?;
+        continue
     }
 }
 
