@@ -1,58 +1,38 @@
+use std::fs;
+use std::path::Path;
 use std::time::Instant;
-use ort::{inputs, CPUExecutionProvider, CUDAExecutionProvider, ExecutionProvider, Session, SessionOutputs, TensorRTExecutionProvider};
-//use pyo3::{types, PyResult, Python};
-//use pyo3::prelude::*;
-//use pyo3::types::{PyBytes, PyModule};
-use crate::{detection_processing, utils};
-use crate::bvr_data::{DeviceType, ModelConfig};
-use crate::send_channels::DetectionState;
+use image::{DynamicImage, EncodableLayout};
+/*use pyo3::prelude::*;
+use pyo3::Python;
+use pyo3::types::PyByteArray;*/
+
+use crate::data::{BvrDetection, BvrImage, ModelConfig, ConfigOrt, YoloVersion};
+use crate::data::send_channels::DetectionState;
+use crate::detection_runners::inference_process::InferenceProcess;
+use crate::detection_runners::OrtYOLO;
 
 pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
-    //Consider using __OnceCell__ for session persistence
+    let threshold = model_details.conf_threshold;
 
-    let mut threshold = model_details.threshold;
-
-    // Dynamically load the onnxruntime library from given path
-    ort::init_from(model_details.ort_lib_path).commit()?;
-
-    let session_builder = Session::builder()?;
-
-    let execution_provider = match model_details.device_type {
-        DeviceType::CPU => { CPUExecutionProvider::default().build() },
-        DeviceType::CUDA => {
-            let cuda = CUDAExecutionProvider::default();
-            match cuda.register(&session_builder) {
-                Ok(_) => log::info!("CUDA device successfully registered"),
-                Err(e) => {
-                    log::warn!("Failed to register CUDA device: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            cuda.build()
-        },
-        DeviceType::TensorRT => {
-            let tensor_rt = TensorRTExecutionProvider::default();
-            match tensor_rt.register(&session_builder) {
-                Ok(_) => log::info!("TensorRT device successfully registered"),
-                Err(e) => {
-                    log::warn!("Failed to register TensorRT device: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            tensor_rt.build()
-        },
-    };
-
-    let classes_list = utils::file_to_vec(model_details.classes_path.to_string())?;
-    let session = session_builder.commit_from_file(model_details.onnx_path)?;
-
-    let input_info = &session.inputs;
-    let output_info = &session.outputs;
+    let ort_options = ConfigOrt::new()
+        .with_model(&model_details.weights_path)?
+        .with_ort_lib_path(&model_details.ort_lib_path)?
+        //.with_batch_size(2)
+        .with_yolo_version(YoloVersion::V11)
+        .with_device(model_details.device_type)
+        .with_trt_fp16(false)
+        .with_ixx(0, 0, (1, 1 as _, 4).into())
+        .with_ixx(0, 2, (640, 640, 640).into())
+        .with_ixx(0, 3, (640, 640, 640).into())
+        .with_confs(&[threshold])
+        .with_nc(80)
+        .with_profile(false);
 
     log::info!("Initializing ORT session with ({}) execution provider", model_details.device_type.as_str());
-    ort::init()
-        .with_execution_providers([execution_provider])
-        .commit()?;
+    let mut yolo = OrtYOLO::new(ort_options)?;
+
+    // Dry run to init model, we want to fail here if there's an issue
+    yolo.run(&[DynamicImage::new_rgb8(model_details.width, model_details.height)]).expect("Dry run failed");
 
     loop {
         // MESSAGE LOOP STARTS HERE
@@ -65,97 +45,123 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
         };
         let detect_time = Instant::now();
 
-        let bvr_image = *bvr_image_box;
+        let bvr_image: BvrImage = *bvr_image_box;
 
-        if bvr_image.threshold != 0.0 {
-            threshold = bvr_image.threshold;
+        let mut detections: Vec<BvrDetection> = vec![];
+
+        // A ratio of 1.777~ is 16/9
+        if model_details.split_wide_input && bvr_image.get_ratio() > 1.78 {
+            let crop_w = (bvr_image.img_width / 2) as u32;
+            let img_left = bvr_image.image.crop_imm(0, 0, crop_w, bvr_image.img_height as u32);
+            let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.img_width as u32, bvr_image.img_height as u32);
+
+            let ys = yolo.forward(&[img_left], false)?;
+            let ys_right = yolo.forward(&[img_right], false)?;
+
+            match ys[0].detections() {
+                None => {}
+                _ => {
+                    detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
+
+                    match ys_right[0].detections() {
+                        None => {}
+                        _ => {
+                            for detection in ys_right[0].detections().unwrap() {
+                                let mut bvr_det = detection.clone();
+                                bvr_det.bbox.x1 += crop_w as f32;
+                                bvr_det.bbox.x2 += crop_w as f32;
+                                detections.push(bvr_det);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            let ys = yolo.forward(&[bvr_image.image], false)?;
+
+            match ys[0].detections() {
+                None => {}
+                _ => {
+                    detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
+                }
+            }
         }
 
-        let (img_width, img_height, input) = detection_processing::process_image(bvr_image, model_details.width, model_details.height);
-        let mut _detect_elapsed = detect_time.elapsed();
-
-        _detect_elapsed = utils::trace(is_test, "TIME", "Preprocessing input", detect_time, _detect_elapsed);
-
-        // Run ONNX inference
-        let outputs: SessionOutputs = session.run(inputs![&input_info[0].name => input.view()]?)?;
-
-        let detection_time = (detect_time.elapsed() - _detect_elapsed).as_micros();
-        _detect_elapsed = utils::trace(is_test, "TIME", "Detection run", detect_time, _detect_elapsed);
-
-        let output = outputs[output_info[0].name.as_str()].try_extract_tensor::<f32>()?.t().into_owned();
-
-        _detect_elapsed = utils::trace(is_test, "TIME", "Outputs", detect_time, _detect_elapsed);
-
-        let detections = detection_processing::process_predictions(&output, &classes_list,
-                                                                   model_details.width as f32, model_details.height as f32,
-                                                                   img_width as f32, img_height as f32,
-                                                                   detection_time, threshold);
-
-        _detect_elapsed = utils::trace(is_test, "TIME", "Postprocessing", detect_time, _detect_elapsed);
-
         detection_state.det_tx.send(Box::from(detections))?;
+
+        println!("Loop time: {:?}", detect_time.elapsed());
 
         continue
     }
 }
 
-/*pub fn detector_python(detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
+// /// The python detector is still a WIP
+/*pub fn detector_python(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
+    let threshold = model_details.conf_threshold;
+
+    log::info!("Initializing ORT session with ({}) execution provider", model_details.device_type.as_str());
     /*
     -------------- DO NOT USE --------------
     THIS IS NOT READY AND WILL CAUSE A PANIC
     */
 
-    let python_file = std::fs::read_to_string("../detector.py")?;
+    let python_file = std::fs::read_to_string("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/detector.py")?;
 
-    Python::with_gil(|py| -> PyResult<()> {
-        let sys = py.import_bound("sys")?;
-        let path = sys.getattr("path")?;
-        path.call_method1("append", ("../bvr_detector_lib_python/venv/lib/python3.12/site-packages/",))?;  // append my venv path
-        path.call_method1("append", ("../bvr_detector_lib_python/",))?;  // append my venv path
+    let model_path = "/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/yolov9-t.pt";
 
-        let p_module = PyModule::from_code_bound(py, &python_file, "detector.py", "detector")?;
+    pyo3::prepare_freethreaded_python();
+
+    Python::with_gil(|py| {
+        let sys = py.import_bound("sys").unwrap();
+        let path = sys.getattr("path").unwrap();
+        //path.call_method1("insert", (0, model_path )).unwrap();
+        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/venv3/lib/python3.10/site-packages",)).unwrap();  // append venv path
+        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python",)).unwrap();
+
+        for entry in fs::read_dir("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python").unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+
+            // Check if the entry is a directory
+            if entry_path.is_dir() {
+                path.call_method1("append", (entry_path,)).unwrap();
+            }
+        }
+
+        let p_module = PyModule::from_code_bound(py, &python_file, "detector.py", "detector").unwrap();
+
+        let init_fun: Py<PyAny> = p_module.getattr("init_detector").unwrap().unbind();
+        let detect_fun: Py<PyAny> = p_module.getattr("run_detector").unwrap().unbind();
 
         let device = "cpu"; // Or "cuda" depending on your setup
-        let model_size = (model_details.width, model_details.height);
+        let model_size = 640;
         let conf_thresh = 0.5;
         let iou_thresh = 0.4;
 
-        let init_detector: bool = p_module.getattr("init_detector")?.call1((device, model_details.onnx_path, model_size, conf_thresh, iou_thresh))?.extract()?;
+        let args = (device, model_path, model_size, conf_thresh, iou_thresh);
 
-        if init_detector == false {
-            println!("No Beuno Senior!")
+        match init_fun.call1(py, args) {
+            Ok(_) => { println!("worked")}
+            Err(e) => { println!("{:?}", e) }
         }
 
-        // Call run_detector method
-        let run_detector = p_module.getattr("run_detector").unwrap();
+        let img_path = "/mnt/4TB/Development/Bvr-Project/bvr_detect/tests/8_people.jpg";
 
-        loop {
-            // MESSAGE LOOP STARTS HERE
-            let bvr_image = match detection_state.opt_rx.recv() {
-                Ok(msg) => msg,
-                Err(err) => {
-                    log::error!("bvr_detect: Failed to receive image: {}", err);
-                    continue;
-                }
-            };
+        let dyn_image = image::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(img_path)).unwrap();
 
-            // Convert image data to PyBytes
-            let py_image_data = PyBytes::new_bound(py, bvr_image.image.as_bytes());
+        let rgb8 = dyn_image.clone().to_rgb8();
+        let img_bytes = rgb8.as_bytes();
 
-            // Call run_detector with the image data
-            let result = run_detector.call1((py_image_data,)).unwrap();
+        let py_bytes = PyByteArray::new_bound(py,&img_bytes);
+        let py_image = py_bytes.as_any();
 
-            let json_str: &str = result.extract().unwrap();
+        let args = (py_image, 0, 0);
 
-            let detections: Vec<BvrDetection> = serde_json::from_str(json_str).unwrap();
+        let results = detect_fun.call1(py, args);
 
-
-            println!("Result: {}", result);
-
-            detection_state.det_tx.send(detections).unwrap();
-        }
-    }).expect("TODO: panic message");
+        println!("{:?}", results);
+    });
 
     Ok(())
 }*/
-
