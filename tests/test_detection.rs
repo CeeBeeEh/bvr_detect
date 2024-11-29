@@ -55,6 +55,7 @@ async fn detection() {
         img_height: img_height as i32,
         threshold: 0.5,
         augment: false,
+        wanted_labels: None,
     };
 
     init_detector(model_details, true).await;

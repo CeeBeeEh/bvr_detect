@@ -6,7 +6,7 @@ use BvrDetect::bvr_detect::{detect, init_detector};
 use BvrDetect::data::{BvrDetection, BvrImage, DeviceType, ModelConfig, ProcessingType, YoloVersion};
 
 #[tokio::test]
-fn no_detections() {
+async fn no_detections() {
     /////////////////////
     // Testing variables
     let loop_count: u32 = 3;
@@ -46,6 +46,7 @@ fn no_detections() {
         img_height: img_height as i32,
         threshold: 0.5,
         augment: false,
+        wanted_labels: None,
     };
 
     let _ = init_detector(model_details, true);
@@ -56,7 +57,7 @@ fn no_detections() {
     let mut count = 0;
 
     while count < loop_count {
-        let result = detect(bvr_image.clone()).unwrap();
+        let result = detect(bvr_image.clone()).await.unwrap();
         assert_eq!(result.len(), 0);
 
         println!("TIME | Total={:.2?} | {}th detection_runners={:.2?}", now.elapsed(), count, now.elapsed() - elapsed);

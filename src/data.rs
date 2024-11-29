@@ -10,6 +10,7 @@ mod filesystem_access;
 mod time_calc;
 pub mod send_channels;
 mod config_tch;
+mod label_threshold;
 
 pub use config_ort::ConfigOrt;
 pub use model_config::ModelConfig;
@@ -18,6 +19,7 @@ pub use device_type::DeviceType;
 
 pub use bvr_image::BvrImage;
 pub use bvr_detection::BvrDetection;
+pub use label_threshold::LabelThreshold;
 
 pub use crate::detection_runners::ort_detector::image_ops::ImageOps;
 pub use crate::detection_runners::ort_detector::min_opt_max::MinOptMax;
