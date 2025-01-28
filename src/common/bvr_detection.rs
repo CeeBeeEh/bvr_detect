@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::data::bvr_box::BvrBox;
+use crate::common::BvrBox;
 use crate::detection_runners::ort_detector::nms::Nms;
 
 #[derive(Default, Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]

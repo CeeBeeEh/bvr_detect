@@ -3,13 +3,17 @@
 use anyhow::Result;
 use half::f16;
 use ndarray::Array;
-use ort::{
-    ExecutionProvider, Session, SessionBuilder, TensorElementType, TensorRTExecutionProvider,
-};
 use prost::Message;
 use std::collections::HashSet;
-
-use crate::data::{DeviceType, FsAccess, ImageOps, MinOptMax, ConfigOrt, TimeCalc, Xs, X};
+use ort::{
+    execution_providers::{CUDAExecutionProvider, ExecutionProvider, TensorRTExecutionProvider, CPUExecutionProvider, CoreMLExecutionProvider},
+    session::builder::SessionBuilder,
+    session::{Session,SessionInputValue},
+    tensor::TensorElementType,
+    value::Value
+};
+use crate::common::{InferenceDevice, InferenceProcessor};
+use crate::data::{FsAccess, ImageOps, MinOptMax, ConfigOrt, TimeCalc, Xs, X};
 use crate::detection_runners::ort_detector::onnx;
 use crate::data::CROSS_MARK;
 use crate::utils::human_bytes;
@@ -39,9 +43,9 @@ pub struct OrtTensorAttr {
 /// ONNXRuntime Backend
 #[derive(Debug)]
 pub struct OrtEngine {
-    name: String,
+    //name: String,
     session: Session,
-    device: DeviceType,
+    device: InferenceDevice,
     inputs_min_opt_max: Vec<Vec<MinOptMax>>,
     inputs_attrs: OrtTensorAttr,
     outputs_attrs: OrtTensorAttr,
@@ -87,38 +91,38 @@ impl OrtEngine {
 
         // build
         ort::init_from(&config.ort_lib_path).commit()?;
-        let builder = Session::builder()?;
+        let mut builder = Session::builder()?;
 
         let mut device = config.device.to_owned();
         match device {
-            DeviceType::TensorRT(device_id) => {
+            InferenceDevice::TensorRT(device_id) => {
                 Self::build_trt(
                     &inputs_attrs.names,
                     &inputs_minoptmax,
-                    &builder,
+                    &mut builder,
                     device_id,
                     config.trt_int8_enable,
                     config.trt_fp16_enable,
                     config.trt_engine_cache_enable,
                 )?;
             }
-            DeviceType::CUDA(device_id) => {
-                Self::build_cuda(&builder, device_id).unwrap_or_else(|err| {
+            InferenceDevice::CUDA(device_id) => {
+                Self::build_cuda(&mut builder, device_id).unwrap_or_else(|err| {
                     log::warn!("{err}, Using cpu");
-                    device = DeviceType::CPU;
+                    device = InferenceDevice::CPU;
                 })
             }
-            DeviceType::CoreML(_) => Self::build_coreml(&builder).unwrap_or_else(|err| {
+            InferenceDevice::CoreML(_) => Self::build_coreml(&mut builder).unwrap_or_else(|err| {
                 log::warn!("{err}, Using cpu");
-                device = DeviceType::CPU;
+                device = InferenceDevice::CPU;
             }),
-            DeviceType::CPU => {
-                Self::build_cpu(&builder)?;
+            InferenceDevice::CPU => {
+                Self::build_cpu(&mut builder)?;
             }
         }
 
         let session = builder
-            .with_optimization_level(ort::GraphOptimizationLevel::Level3)?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
             .commit_from_file(&config.onnx_path)?;
 
         // summary
@@ -130,7 +134,7 @@ impl OrtEngine {
         );
 
         Ok(Self {
-            name: config.onnx_path.to_owned(),
+            //name: config.onnx_path.to_owned(),
             session,
             device,
             inputs_min_opt_max: inputs_minoptmax,
@@ -147,7 +151,7 @@ impl OrtEngine {
     fn build_trt(
         names: &[String],
         inputs_minoptmax: &[Vec<MinOptMax>],
-        builder: &SessionBuilder,
+        builder: &mut SessionBuilder,
         device_id: usize,
         int8_enable: bool,
         fp16_enable: bool,
@@ -200,8 +204,8 @@ impl OrtEngine {
         }
     }
 
-    fn build_cuda(builder: &SessionBuilder, device_id: usize) -> Result<()> {
-        let ep = ort::CUDAExecutionProvider::default().with_device_id(device_id as i32);
+    fn build_cuda(builder: &mut SessionBuilder, device_id: usize) -> Result<()> {
+        let ep = CUDAExecutionProvider::default().with_device_id(device_id as i32);
         if ep.is_available()? && ep.register(builder).is_ok() {
             Ok(())
         } else {
@@ -209,8 +213,8 @@ impl OrtEngine {
         }
     }
 
-    fn build_coreml(builder: &SessionBuilder) -> Result<()> {
-        let ep = ort::CoreMLExecutionProvider::default().with_subgraphs(); //.with_ane_only();
+    fn build_coreml(builder: &mut SessionBuilder) -> Result<()> {
+        let ep = CoreMLExecutionProvider::default().with_subgraphs(); //.with_ane_only();
         if ep.is_available()? && ep.register(builder).is_ok() {
             Ok(())
         } else {
@@ -218,8 +222,8 @@ impl OrtEngine {
         }
     }
 
-    fn build_cpu(builder: &SessionBuilder) -> Result<()> {
-        let ep = ort::CPUExecutionProvider::default();
+    fn build_cpu(builder: &mut SessionBuilder) -> Result<()> {
+        let ep = CPUExecutionProvider::default();
         if ep.is_available()? && ep.register(builder).is_ok() {
             Ok(())
         } else {
@@ -233,28 +237,28 @@ impl OrtEngine {
         let t_pre = std::time::Instant::now();
         for (idtype, x) in self.inputs_attrs.dtypes.iter().zip(xs.into_iter()) {
             let x_ = match &idtype {
-                TensorElementType::Float32 => ort::Value::from_array(x.view())?.into_dyn(),
+                TensorElementType::Float32 => Value::from_array(x.view())?.into_dyn(),
                 TensorElementType::Float16 => {
-                    ort::Value::from_array(x.mapv(f16::from_f32).view())?.into_dyn()
+                    Value::from_array(x.mapv(f16::from_f32).view())?.into_dyn()
                 }
                 TensorElementType::Int32 => {
-                    ort::Value::from_array(x.mapv(|x_| x_ as i32).view())?.into_dyn()
+                    Value::from_array(x.mapv(|x_| x_ as i32).view())?.into_dyn()
                 }
                 TensorElementType::Int64 => {
-                    ort::Value::from_array(x.mapv(|x_| x_ as i64).view())?.into_dyn()
+                    Value::from_array(x.mapv(|x_| x_ as i64).view())?.into_dyn()
                 }
                 TensorElementType::Uint8 => {
-                    ort::Value::from_array(x.mapv(|x_| x_ as u8).view())?.into_dyn()
+                    Value::from_array(x.mapv(|x_| x_ as u8).view())?.into_dyn()
                 }
                 TensorElementType::Int8 => {
-                    ort::Value::from_array(x.mapv(|x_| x_ as i8).view())?.into_dyn()
+                    Value::from_array(x.mapv(|x_| x_ as i8).view())?.into_dyn()
                 }
                 TensorElementType::Bool => {
-                    ort::Value::from_array(x.mapv(|x_| x_ != 0.).view())?.into_dyn()
+                    Value::from_array(x.mapv(|x_| x_ != 0.).view())?.into_dyn()
                 }
                 _ => todo!(),
             };
-            xs_.push(Into::<ort::SessionInputValue<'_>>::into(x_));
+            xs_.push(Into::<SessionInputValue<'_>>::into(x_));
         }
         let t_pre = t_pre.elapsed();
         self.infer_time.add_or_push(0, t_pre);
@@ -525,7 +529,7 @@ impl OrtEngine {
         &self.inputs_attrs.dtypes
     }
 
-    pub fn device(&self) -> &DeviceType {
+    pub fn device(&self) -> &InferenceDevice {
         &self.device
     }
 

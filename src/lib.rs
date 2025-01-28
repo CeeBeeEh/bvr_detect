@@ -2,6 +2,7 @@ mod utils;
 mod detectors;
 pub mod data;
 mod detection_runners;
+pub mod common;
 
 pub mod bvr_detect {
     use std::{sync::LazyLock, thread, time::Instant};
@@ -9,7 +10,7 @@ pub mod bvr_detect {
     use log;
     use ort::Error;
     use parking_lot::Mutex;
-    use crate::data::{BvrDetection, BvrImage, ModelConfig, ProcessingType};
+    use crate::common::{BvrDetection, BvrImage, InferenceProcessor, ModelConfig};
     use crate::detectors::{detector_onnx};
     use crate::data::send_channels::{DetectionState, SendState};
 
@@ -52,14 +53,14 @@ pub mod bvr_detect {
             };
 
             thread::spawn(move || {
-                match model_details.processing_type {
-                    ProcessingType::ORT => {
+                match model_details.inference_processor {
+                    InferenceProcessor::ORT => {
                         detector_onnx(is_test, detection_state, model_details).expect("Error in detector_onnx function");
                     }
-                    ProcessingType::Torch => {
+                    InferenceProcessor::Torch => {
                         // DO NOTHING FOR NOW
                     }
-                    ProcessingType::Python => {
+                    InferenceProcessor::Python => {
                         //detector_python(is_test, detection_state, model_details).expect("Error in detector_python function");
                     }
                 };

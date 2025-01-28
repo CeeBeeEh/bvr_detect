@@ -9,7 +9,7 @@ use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 
 use BvrDetect::bvr_detect::{detect, init_detector};
-use BvrDetect::data::{BvrDetection, BvrImage, DeviceType, ModelConfig, ProcessingType, YoloVersion};
+use BvrDetect::common::{BvrDetection, BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
 mod colours;
 
 #[cfg(test)]
@@ -19,22 +19,22 @@ async fn detection() {
     // Testing variables
     let loop_count: u32 = 10;
     let onnx_path = "../models/yolov11/yolo11n.onnx".to_string();
-    let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.19.0".to_string();
+    let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.20.1".to_string();
     let classes_path = "../models/labels_80.txt".to_string();
     //let image_path = "../test_images/8_people.jpg";
     let image_path = "../test_images/signal-2024-09-26-150939_003.jpg";
     let yolo_ver = "v11".to_string();
     /////////////////////
 
-    let yolo_version = YoloVersion::from(yolo_ver);
+    let model_version = ModelVersion::from(yolo_ver);
 
     let model_details = ModelConfig {
         weights_path: onnx_path,
         ort_lib_path: lib_path,
         labels_path: classes_path,
-        device_type: DeviceType::CUDA(0),
-        processing_type: ProcessingType::ORT,
-        yolo_version,
+        inference_device: InferenceDevice::CUDA(0),
+        inference_processor: InferenceProcessor::ORT,
+        model_version,
         conf_threshold: 0.3,
         width: 640,
         height: 640,

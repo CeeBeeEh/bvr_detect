@@ -4,42 +4,39 @@ use ndarray::{ArrayBase, ArrayView, Axis, Dim, IxDyn, IxDynImpl, ViewRepr};
 
 // Possibly change this to be a generic model type, instead of Yolo specific
 #[derive(Debug, Copy, Clone, Default)]
-pub enum YoloVersion {
-    V5,
-    V6,
-    V7,
-    V8,
-    V9,
-    V10,
-    #[default] V11,
-    RTDETR,
+pub enum ModelVersion {
+    YoloV5,
+    YoloV6,
+    YoloV7,
+    YoloV8,
+    YoloV9,
+    YoloV10,
+    #[default] YoloV11,
 }
 
-impl YoloVersion {
+impl ModelVersion {
     pub fn name(&self) -> String {
         match self {
-            Self::V5 => "v5".to_string(),
-            Self::V6 => "v6".to_string(),
-            Self::V7 => "v7".to_string(),
-            Self::V8 => "v8".to_string(),
-            Self::V9 => "v9".to_string(),
-            Self::V10 => "v10".to_string(),
-            Self::V11 => "v11".to_string(),
-            Self::RTDETR => "rtdetr".to_string(),
+            Self::YoloV5 => "YoloV5".to_string(),
+            Self::YoloV6 => "YoloV6".to_string(),
+            Self::YoloV7 => "YoloV7".to_string(),
+            Self::YoloV8 => "YoloV8".to_string(),
+            Self::YoloV9 => "YoloV9".to_string(),
+            Self::YoloV10 => "YoloV10".to_string(),
+            Self::YoloV11 => "YoloV11".to_string(),
         }
     }
 
-    pub fn from(version: String) -> YoloVersion {
+    pub fn from(version: String) -> ModelVersion {
         match version.to_lowercase().as_str() {
-            "v5" => YoloVersion::V5,
-            "v6" => YoloVersion::V6,
-            "v7" => YoloVersion::V7,
-            "v8" => YoloVersion::V8,
-            "v9" => YoloVersion::V9,
-            "v10" => YoloVersion::V10,
-            "v11" => YoloVersion::V11,
-            "rtdetr" => YoloVersion::RTDETR,
-            _ => YoloVersion::V11,
+            "yolov5" => ModelVersion::YoloV5,
+            "yolov6" => ModelVersion::YoloV6,
+            "yolov7" => ModelVersion::YoloV7,
+            "yolov8" => ModelVersion::YoloV8,
+            "yolov9" => ModelVersion::YoloV9,
+            "yolov10" => ModelVersion::YoloV10,
+            "yolov11" => ModelVersion::YoloV11,
+            _ => ModelVersion::YoloV11,
         }
     }
 }
@@ -253,6 +250,5 @@ impl YoloPreds {
             slice_clss,
             slice_confs,
         )
-
     }
 }

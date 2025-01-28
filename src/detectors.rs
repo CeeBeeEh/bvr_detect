@@ -2,11 +2,12 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use image::{DynamicImage, EncodableLayout};
+use crate::common::{BvrDetection, BvrImage, ModelConfig, ModelVersion};
 /*use pyo3::prelude::*;
 use pyo3::Python;
 use pyo3::types::PyByteArray;*/
 
-use crate::data::{BvrDetection, BvrImage, ModelConfig, ConfigOrt, YoloVersion};
+use crate::data::ConfigOrt;
 use crate::data::send_channels::DetectionState;
 use crate::detection_runners::inference_process::InferenceProcess;
 use crate::detection_runners::OrtYOLO;
@@ -18,8 +19,8 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
         .with_model(&model_details.weights_path)?
         .with_ort_lib_path(&model_details.ort_lib_path)?
         //.with_batch_size(2)
-        .with_yolo_version(YoloVersion::V11)
-        .with_device(model_details.device_type)
+        .with_yolo_version(model_details.model_version)
+        .with_device(model_details.inference_device)
         .with_trt_fp16(false)
         .with_ixx(0, 0, (1, 1 as _, 4).into())
         .with_ixx(0, 2, (640, 640, 640).into())
@@ -28,7 +29,7 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
         .with_nc(80)
         .with_profile(false);
 
-    log::info!("Initializing ORT session with ({}) execution provider", model_details.device_type.as_str());
+    log::info!("Initializing ORT session with ({}) execution provider", model_details.inference_device.to_string());
     let mut yolo = OrtYOLO::new(ort_options)?;
 
     // Dry run to init model, we want to fail here if there's an issue

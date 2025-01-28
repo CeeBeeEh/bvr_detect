@@ -6,7 +6,8 @@ use ndarray::{s, Axis};
 use rayon::prelude::*;
 use regex::Regex;
 
-use crate::data::{BoxType, BvrDetection, DynConf, ImageOps, MinOptMax, ConfigOrt, Xs, YoloPreds, YoloVersion, X, Y};
+use crate::common::{BoxType, BvrDetection, ModelVersion, YoloPreds};
+use crate::data::{ConfigOrt, DynConf, ImageOps, MinOptMax, Xs, X, Y};
 use crate::detection_runners::inference_process::InferenceProcess;
 use crate::detection_runners::ort_detector::OrtEngine;
 
@@ -21,7 +22,7 @@ pub struct OrtYOLO {
     iou: f32,
     names: Vec<String>,
     layout: YoloPreds,
-    version: Option<YoloVersion>,
+    version: Option<ModelVersion>,
 }
 
 impl InferenceProcess for OrtYOLO {
@@ -39,10 +40,9 @@ impl InferenceProcess for OrtYOLO {
         // YOLO Outputs Format
         let (version, layout) = match options.yolo_version {
             Some(ver) => match ver {
-                        YoloVersion::V5 | YoloVersion::V6 | YoloVersion::V7 => (Some(ver), YoloPreds::n_a_cxcywh_confclss()),
-                        YoloVersion::V8 | YoloVersion::V9 | YoloVersion::V11 => (Some(ver), YoloPreds::n_cxcywh_clss_a()),
-                        YoloVersion::V10 => (Some(ver), YoloPreds::n_a_xyxy_confcls().apply_nms(false)),
-                        YoloVersion::RTDETR => (Some(ver), YoloPreds::n_a_cxcywh_clss_n().apply_nms(false)),
+                ModelVersion::YoloV5 | ModelVersion::YoloV6 | ModelVersion::YoloV7 => (Some(ver), YoloPreds::n_a_cxcywh_confclss()),
+                ModelVersion::YoloV8 | ModelVersion::YoloV9 | ModelVersion::YoloV11 => (Some(ver), YoloPreds::n_cxcywh_clss_a()),
+                ModelVersion::YoloV10 => (Some(ver), YoloPreds::n_a_xyxy_confcls().apply_nms(false)),
             },
             None => match options.yolo_preds {
                 None => anyhow::bail!("No clear YOLO version or YOLO Format specified."),
@@ -274,7 +274,7 @@ impl OrtYOLO {
         self.height.opt()
     }
 
-    pub fn version(&self) -> Option<&YoloVersion> {
+    pub fn version(&self) -> Option<&ModelVersion> {
         self.version.as_ref()
     }
 

@@ -4,15 +4,15 @@
 
 use anyhow::Result;
 
-use crate::data::{DeviceType, MinOptMax};
-use crate::data::yolo_types::{YoloPreds, YoloVersion};
+use crate::common::{InferenceDevice, ModelVersion, YoloPreds};
+use crate::data::MinOptMax;
 use crate::detection_runners::Iiix;
 
 #[derive(Debug, Clone)]
 pub struct ConfigOrt {
     pub onnx_path: String,
     pub ort_lib_path: String,
-    pub device: DeviceType,
+    pub device: InferenceDevice,
     pub batch_size: usize,
     pub iiixs: Vec<Iiix>,
     pub profile: bool,
@@ -32,7 +32,7 @@ pub struct ConfigOrt {
     pub min_width: Option<f32>,
     pub min_height: Option<f32>,
     pub unclip_ratio: f32, // DB*/
-    pub yolo_version: Option<YoloVersion>,
+    pub yolo_version: Option<ModelVersion>,
     pub yolo_preds: Option<YoloPreds>,
 }
 
@@ -41,7 +41,7 @@ impl Default for ConfigOrt {
         Self {
             onnx_path: String::new(),
             ort_lib_path: String::new(),
-            device: DeviceType::CPU,
+            device: InferenceDevice::CPU,
             profile: false,
             batch_size: 1,
             iiixs: vec![],
@@ -96,7 +96,7 @@ impl ConfigOrt {
         self
     }
 
-    pub fn with_device(mut self, device_type: DeviceType) -> Self {
+    pub fn with_device(mut self, device_type: InferenceDevice) -> Self {
         self.device = device_type;
         self
     }
@@ -106,7 +106,7 @@ impl ConfigOrt {
         self
     }
 
-    pub fn with_yolo_version(mut self, x: YoloVersion) -> Self {
+    pub fn with_yolo_version(mut self, x: ModelVersion) -> Self {
         self.yolo_version = Some(x);
         self
     }

@@ -1,6 +1,6 @@
 //! File/code adapted from https://github.com/jamjamjon/usls
 
-use crate::data::BvrDetection;
+use crate::common::BvrDetection;
 use crate::detection_runners::ort_detector::nms::Nms;
 use crate::detection_runners::ort_detector::prob::Prob;
 

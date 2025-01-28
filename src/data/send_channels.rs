@@ -1,4 +1,4 @@
-use crate::data::{BvrDetection, BvrImage};
+use crate::common::{BvrDetection, BvrImage};
 
 #[derive(Debug)]
 pub struct DetectionState {

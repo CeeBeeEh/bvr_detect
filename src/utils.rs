@@ -1,7 +1,8 @@
 use std::{fs, io};
 use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{rng, Rng};
+use rand::distr::Alphanumeric;
 
 #[allow(dead_code)]
 pub(crate) fn file_to_vec(filename: String) -> io::Result<Vec<String>> {
@@ -23,7 +24,7 @@ pub(crate) fn trace(is_test: bool, l_type: &str, l_step: &str, detect: Instant, 
 
 #[allow(dead_code)]
 pub(crate) fn string_random(n: usize) -> String {
-    thread_rng()
+    rng()
         .sample_iter(&Alphanumeric)
         .take(n)
         .map(char::from)
