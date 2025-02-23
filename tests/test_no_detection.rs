@@ -2,8 +2,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
 use image::GenericImageView;
-use BvrDetect::bvr_detect::{detect, init_detector};
-use BvrDetect::data::{BvrDetection, BvrImage, DeviceType, ModelConfig, ProcessingType, YoloVersion};
+use bvr_detect::common::{BvrDetection, BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
 
 #[tokio::test]
 async fn no_detections() {
@@ -17,15 +16,15 @@ async fn no_detections() {
     let yolo_ver = "v11".to_string();
     /////////////////////
 
-    let yolo_version = YoloVersion::from(yolo_ver);
+    let model_version = ModelVersion::from(yolo_ver);
 
     let model_details = ModelConfig {
         weights_path: onnx_path,
         ort_lib_path: lib_path,
         labels_path: classes_path,
-        device_type: DeviceType::CUDA(0),
-        processing_type: ProcessingType::ORT,
-        yolo_version,
+        inference_device: InferenceDevice::CUDA(0),
+        inference_processor: InferenceProcessor::ORT,
+        model_version,
         conf_threshold: 0.3,
         width: 640,
         height: 640,
@@ -49,7 +48,7 @@ async fn no_detections() {
         wanted_labels: None,
     };
 
-    let _ = init_detector(model_details, true);
+    let _ = bvr_detect::init_detector(model_details, true);
 
     let now = Instant::now();
     let mut elapsed = now.elapsed();
@@ -57,7 +56,7 @@ async fn no_detections() {
     let mut count = 0;
 
     while count < loop_count {
-        let result = detect(bvr_image.clone()).await.unwrap();
+        let result = bvr_detect::run_detection(bvr_image.clone()).await.unwrap();
         assert_eq!(result.len(), 0);
 
         println!("TIME | Total={:.2?} | {}th detection_runners={:.2?}", now.elapsed(), count, now.elapsed() - elapsed);

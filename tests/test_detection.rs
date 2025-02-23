@@ -1,4 +1,4 @@
-extern crate BvrDetect;
+extern crate bvr_detect;
 
 use std::path::Path;
 use std::sync::mpsc;
@@ -7,9 +7,8 @@ use ab_glyph::{FontRef, PxScale};
 use image::GenericImageView;
 use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
+use bvr_detect::common::{BvrDetection, BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
 
-use BvrDetect::bvr_detect::{detect, init_detector};
-use BvrDetect::common::{BvrDetection, BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
 mod colours;
 
 #[cfg(test)]
@@ -23,7 +22,7 @@ async fn detection() {
     let classes_path = "../models/labels_80.txt".to_string();
     //let image_path = "../test_images/8_people.jpg";
     let image_path = "../test_images/signal-2024-09-26-150939_003.jpg";
-    let yolo_ver = "v11".to_string();
+    let yolo_ver = "yolov11".to_string();
     /////////////////////
 
     let model_version = ModelVersion::from(yolo_ver);
@@ -58,7 +57,7 @@ async fn detection() {
         wanted_labels: None,
     };
 
-    init_detector(model_details, true).await;
+    bvr_detect::init_detector(model_details, true).await;
 
     let now = Instant::now();
     let mut elapsed = now.elapsed();
@@ -66,7 +65,7 @@ async fn detection() {
     let mut count = 0;
 
     while count < loop_count {
-        let result = detect(bvr_image.clone()).await.unwrap();
+        let result = bvr_detect::run_detection(bvr_image.clone()).await.unwrap();
         //assert_eq!(result.len(), 8);
 
         let mut detection_thres = String::from("Confidence: ");

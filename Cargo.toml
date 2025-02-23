@@ -4,7 +4,7 @@ version = "0.2.2"
 edition = "2021"
 
 [lib]
-name = "BvrDetect"
+name = "bvr_detect"
 crate-type = ["rlib"]
 path = "src/lib.rs"
 

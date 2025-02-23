@@ -91,7 +91,9 @@ pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_detai
 
         // remove any detection that's not in the wanted_labels vector
         if let Some(wanted) = bvr_image.wanted_labels {
-            detections.retain(|detection| wanted.contains(&(detection.class_id as u16)));
+            if !wanted.is_empty() {
+                detections.retain(|detection| wanted.contains(&(detection.class_id as u16)));
+            }
         }
         
         detection_state.det_tx.send(Box::from(detections))?;
