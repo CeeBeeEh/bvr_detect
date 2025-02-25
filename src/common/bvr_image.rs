@@ -4,8 +4,8 @@ use crate::data::LabelThreshold;
 #[derive(Debug, Clone)]
 pub struct BvrImage {
     pub image: DynamicImage,
-    pub img_width: i32,
-    pub img_height: i32,
+    pub img_width: u32,
+    pub img_height: u32,
     pub threshold: f32,
     pub augment: bool,
     pub wanted_labels: Option<Vec<u16>>,
@@ -16,8 +16,8 @@ impl BvrImage {
         let (img_width, img_height) = image.dimensions();
         Self {
             image,
-            img_width: img_width as i32,
-            img_height: img_height as i32,
+            img_width,
+            img_height,
             threshold,
             augment,
             wanted_labels: label_filters

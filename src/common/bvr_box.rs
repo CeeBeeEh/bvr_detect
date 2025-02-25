@@ -152,6 +152,15 @@ impl BvrBox {
          self.y2.round())
     }
 
+    pub fn as_x1y1_x2y2_wh_f32_rounded(&self) -> (f32, f32, f32, f32, f32, f32) {
+        (self.x1.round(),
+         self.y1.round(),
+         self.x2.round(),
+         self.y2.round(),
+         self.w.round(),
+         self.h.round())
+    }
+    
     /// Sets the bounding box's coordinates using `(x1, y1, x2, y2)` and calculates width and height.
     ///
     /// # Arguments

@@ -50,8 +50,8 @@ async fn detection() {
 
     let bvr_image: BvrImage = BvrImage {
         image,
-        img_width: img_width as i32,
-        img_height: img_height as i32,
+        img_width,
+        img_height,
         threshold: 0.5,
         augment: false,
         wanted_labels: None,

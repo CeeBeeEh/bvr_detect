@@ -145,7 +145,6 @@ impl InferenceProcess for OrtYOLO {
                     slice_confs,
                 ) = self.layout.parse_preds(preds, self.nc);
 
-
                 let image_width = xs0[idx].width() as f32;
                 let image_height = xs0[idx].height() as f32;
                 let ratio =
@@ -156,7 +155,6 @@ impl InferenceProcess for OrtYOLO {
                     .into_par_iter()
                     .enumerate()
                     .filter_map(|(i, bbox)| {
-
 
                         // confidence & class_id
                         let (class_id, confidence) = match &slice_id {
@@ -177,7 +175,7 @@ impl InferenceProcess for OrtYOLO {
                             }
                         };
 
-                        // filtering
+                        // filtering low scores
                         if confidence < self.confs[class_id] {
                             return None;
                         }
@@ -228,17 +226,20 @@ impl InferenceProcess for OrtYOLO {
                             }
                         };
 
+                        // filtering unreliably small objects
+                        if w < 15.0 || h < 15.0 {
+                            return None;
+                        }
+
                         let y_bbox = BvrDetection::default()
                                     .with_x1y1_wh(x, y, w, h)
                                     .with_confidence(confidence)
                                     .with_class_id(class_id as isize)
                                     .with_label(&self.names[class_id]);
 
-
                         Some(y_bbox)
                     })
                     .collect::<Vec<_>>();
-
 
                 // Bboxes
                 if !y_bboxes.is_empty() {
