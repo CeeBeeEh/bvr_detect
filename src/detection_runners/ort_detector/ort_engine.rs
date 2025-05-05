@@ -60,12 +60,13 @@ pub struct OrtEngine {
 impl OrtEngine {
     pub fn new(config: &ConfigOrt) -> Result<Self> {
         // onnx graph
+
         let model_proto = Self::load_onnx(&config.onnx_path)?;
+
         let graph = match &model_proto.graph {
             Some(graph) => graph,
             None => anyhow::bail!("No graph found in this proto. Failed to parse ONNX model."),
         };
-
         // model params & mems
         let byte_alignment = 16; // 16 for simd; 8 for most
         let mut params: usize = 0;
@@ -90,7 +91,17 @@ impl OrtEngine {
             Self::build_inputs_minoptmax(&inputs_attrs, &config.iiixs, config.batch_size)?;
 
         // build
-        ort::init_from(&config.ort_lib_path).commit()?;
+        let ort_init = ort::init_from(&config.ort_lib_path);
+        //ort_init.commit().expect("Failed to commit ONNX dependencies");
+
+        match ort_init.commit() {
+            Ok(_) => {},
+            Err(e) => {
+                println!("ORT commit failed! Error: {:?}", e);
+                return Err(anyhow::anyhow!("Failed to commit ORT: {:?}", e));
+            }
+        };
+
         let mut builder = Session::builder()?;
 
         let mut device = config.device.to_owned();
@@ -494,7 +505,8 @@ impl OrtEngine {
 
     pub fn load_onnx<P: AsRef<std::path::Path>>(p: P) -> Result<onnx::ModelProto> {
         let f = std::fs::read(p)?;
-        Ok(onnx::ModelProto::decode(f.as_slice())?)
+        onnx::ModelProto::decode(f.as_slice())
+            .map_err(|e| anyhow::anyhow!("Failed to decode ONNX model: {}", e))
     }
 
     pub fn out_shapes(&self) -> &Vec<Vec<usize>> {

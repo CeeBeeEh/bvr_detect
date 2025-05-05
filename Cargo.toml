@@ -1,6 +1,6 @@
 [package]
 name = "bvr_detect"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -19,7 +19,7 @@ half = { version = "2.4" }
 rand = { version = "0.9" }
 
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.43", features = ["rt", "rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1.43", features = ["rt", "rt-multi-thread", "macros", "fs", "sync"] }
 anyhow = "1.0"
 log = "0.4"
 #tracing = "0.1"

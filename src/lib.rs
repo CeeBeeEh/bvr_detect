@@ -1,88 +1,46 @@
 mod utils;
 mod detectors;
 pub mod data;
-mod detection_runners;
+pub mod detection_runners;
 pub mod common;
 
-use std::{sync::LazyLock, thread, time::Instant};
-//    use std::cell::OnceCell;
+use std::{time::Instant};
+use image::DynamicImage;
 use log;
 use ort::Error;
-use parking_lot::Mutex;
-use crate::common::{BvrDetection, BvrImage, InferenceProcessor, ModelConfig};
+use crate::common::{BvrDetection, BvrImage, BvrOrtYOLO, ModelConfig};
+use crate::data::ConfigOrt;
 use crate::detectors::{detector_onnx};
-use crate::data::send_channels::{DetectionState, SendState};
+use crate::detection_runners::inference_process::InferenceProcess;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-static IS_RUNNING: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
-static SEND_STATE: LazyLock<Mutex<SendState>> = LazyLock::new(|| Mutex::new({
-    let tx = crossbeam_channel::unbounded::<Box<BvrImage>>().0;
-    let rx2 = crossbeam_channel::unbounded::<Box<Vec<BvrDetection>>>().1;
-    SendState {
-        opt_tx: tx,
-        det_rx: rx2,
-    }
-}));
+pub fn init_detector(model_details: &ModelConfig, is_test: bool) -> anyhow::Result<BvrOrtYOLO> {
+    println!("===========\ninit_detector 1\n===========");
+    let ort_options = ConfigOrt::new()
+        .with_model(&model_details.weights_path)?
+        .with_ort_lib_path(&model_details.ort_lib_path)?
+        //.with_batch_size(2)
+        .with_yolo_version(model_details.model_version)
+        .with_device(model_details.inference_device)
+        .with_trt_fp16(false)
+        .with_ixx(0, 0, (1, 1 as _, 4).into())
+        .with_ixx(0, 2, (320, 544, 1200).into())
+        .with_ixx(0, 3, (320, 960, 1200).into())
+        .with_confs(&[model_details.get_threshold()])
+        .with_nc(29)
+        .with_profile(false);
 
-//    static SEND_STATE: OnceCell<Mutex<SendState>> = OnceCell::new();
-
-pub async fn is_detector_running() -> Result<bool> {
-    let is_running = IS_RUNNING.lock();
-
-    if *is_running { Ok(true) } else { Ok(false) }
+    log::info!("Initializing ORT session with ({}) execution provider", model_details.inference_device.to_string());
+    let mut yolo = BvrOrtYOLO::new(ort_options)?;
+    yolo.run(&[DynamicImage::new_rgb8(960, 960)])?;
+    Ok(yolo)
 }
 
-pub async fn init_detector(model_details: ModelConfig, is_test: bool) {
-    let mut is_running = IS_RUNNING.lock();
-    let mut send_state = SEND_STATE.lock();
-
-    if !*is_running {
-        *is_running = true;
-
-        let (det_tx, det_rx) = crossbeam_channel::unbounded::<Box<Vec<BvrDetection>>>();
-        let (opt_tx, opt_rx) = crossbeam_channel::unbounded::<Box<BvrImage>>();
-
-        send_state.det_rx = det_rx;
-        send_state.opt_tx = opt_tx;
-
-        let detection_state = DetectionState {
-            opt_rx,
-            det_tx
-        };
-
-        thread::spawn(move || {
-            match model_details.inference_processor {
-                InferenceProcessor::ORT => {
-                    detector_onnx(is_test, detection_state, model_details).expect("Error in detector_onnx function");
-                }
-                InferenceProcessor::Torch => {
-                    // DO NOTHING FOR NOW
-                }
-                InferenceProcessor::Python => {
-                    //detector_python(is_test, detection_state, model_details).expect("Error in detector_python function");
-                }
-            };
-        });
-    } else {
-        log::warn!("Detector is already initialized");
-    }
-}
-
-pub async fn run_detection(bvr_image: BvrImage) -> anyhow::Result<Vec<BvrDetection>> {
+pub fn run_detection(yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, model_details: &ModelConfig) -> anyhow::Result<Vec<BvrDetection>> {
     let now = Instant::now();
 
-    let is_running = IS_RUNNING.lock();
-    let send_state = SEND_STATE.lock();
-
-    if !*is_running {
-        panic!("Detector is not running or hasn't been initialized");
-    }
-
-    send_state.opt_tx.send(Box::from(bvr_image))?;
-
-    // TODO: We're losing about 5ms on this receive statement for some reason, aside from the inference/processing time
-    let detections = *(send_state.det_rx.recv()?);
+    let detections = detector_onnx(false, yolo, bvr_image, &model_details)?;
 
     println!("Processing time: {:?}", now.elapsed());
 

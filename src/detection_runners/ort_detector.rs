@@ -1,6 +1,6 @@
 mod onnx;
 mod ort_engine;
-mod ort_inference;
+pub mod ort_inference;
 mod prob;
 pub mod image_ops;
 pub mod input_wrapper;

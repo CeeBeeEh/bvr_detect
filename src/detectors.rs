@@ -1,107 +1,75 @@
-use std::fs;
-use std::path::Path;
 use std::time::Instant;
-use image::{DynamicImage, EncodableLayout};
-use crate::common::{BvrDetection, BvrImage, ModelConfig, ModelVersion};
+use crate::common::{BvrDetection, BvrImage, ModelConfig, BvrOrtYOLO};
 /*use pyo3::prelude::*;
 use pyo3::Python;
 use pyo3::types::PyByteArray;*/
 
-use crate::data::ConfigOrt;
-use crate::data::send_channels::DetectionState;
 use crate::detection_runners::inference_process::InferenceProcess;
-use crate::detection_runners::OrtYOLO;
 
-pub fn detector_onnx(is_test: bool, detection_state: DetectionState, model_details: ModelConfig) -> anyhow::Result<()> {
-    let threshold = model_details.conf_threshold;
+pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, model_details: &ModelConfig) -> anyhow::Result<Vec<BvrDetection>> {
+    let detect_time = Instant::now();
 
-    let ort_options = ConfigOrt::new()
-        .with_model(&model_details.weights_path)?
-        .with_ort_lib_path(&model_details.ort_lib_path)?
-        //.with_batch_size(2)
-        .with_yolo_version(model_details.model_version)
-        .with_device(model_details.inference_device)
-        .with_trt_fp16(false)
-        .with_ixx(0, 0, (1, 1 as _, 4).into())
-        .with_ixx(0, 2, (640, 640, 640).into())
-        .with_ixx(0, 3, (640, 640, 640).into())
-        .with_confs(&[threshold])
-        .with_nc(80)
-        .with_profile(false);
+    let mut detections: Vec<BvrDetection> = vec![];
 
-    log::info!("Initializing ORT session with ({}) execution provider", model_details.inference_device.to_string());
-    let mut yolo = OrtYOLO::new(ort_options)?;
+    // A ratio of 1.777~ is 16/9
+    if model_details.split_wide_input && bvr_image.get_ratio() > 1.78 {
+        let crop_w = bvr_image.get_img_width() - &bvr_image.img_height;
+        //let crop_w = (bvr_image.img_width() / 2) as u32;
+        let img_left = bvr_image.image.crop_imm(0, 0, bvr_image.get_img_height(), bvr_image.get_img_height());
+        let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.get_img_width(), bvr_image.get_img_height());
 
-    // Dry run to init model, we want to fail here if there's an issue
-    yolo.run(&[DynamicImage::new_rgb8(model_details.width, model_details.height)]).expect("Dry run failed");
+        img_left.save("/mnt/4TB/Development/Bvr-Project/models/bvr_yolo/eval_images/_left.jpg").expect("TODO: panic message");
+        img_right.save("/mnt/4TB/Development/Bvr-Project/models/bvr_yolo/eval_images/_right.jpg").expect("TODO: panic message");
 
-    loop {
-        // MESSAGE LOOP STARTS HERE
-        let bvr_image_box = match detection_state.opt_rx.recv() {
-            Ok(msg) => msg,
-            Err(err) => {
-                log::error!("bvr_detect: Failed to receive image: {}", err);
-                continue;
-            }
-        };
-        let detect_time = Instant::now();
+        let ys = yolo.forward(&[img_left], false)?;
+        let ys_right = yolo.forward(&[img_right], false)?;
 
-        let bvr_image: BvrImage = *bvr_image_box;
+        match ys[0].detections() {
+            None => {}
+            _ => {
+                detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
 
-        let mut detections: Vec<BvrDetection> = vec![];
+                match ys_right[0].detections() {
+                    None => {}
+                    _ => {
+                        'right_loop: for detection in ys_right[0].detections().unwrap() {
+                            let mut bvr_det = detection.clone();
+                            bvr_det.bbox.x1 += crop_w as f32;
+                            bvr_det.bbox.x2 += crop_w as f32;
 
-        // A ratio of 1.777~ is 16/9
-        if model_details.split_wide_input && bvr_image.get_ratio() > 1.78 {
-            let crop_w = (bvr_image.img_width / 2) as u32;
-            let img_left = bvr_image.image.crop_imm(0, 0, crop_w, bvr_image.img_height as u32);
-            let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.img_width as u32, bvr_image.img_height as u32);
-
-            let ys = yolo.forward(&[img_left], false)?;
-            let ys_right = yolo.forward(&[img_right], false)?;
-
-            match ys[0].detections() {
-                None => {}
-                _ => {
-                    detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
-
-                    match ys_right[0].detections() {
-                        None => {}
-                        _ => {
-                            for detection in ys_right[0].detections().unwrap() {
-                                let mut bvr_det = detection.clone();
-                                bvr_det.bbox.x1 += crop_w as f32;
-                                bvr_det.bbox.x2 += crop_w as f32;
-                                detections.push(bvr_det);
+                            for left_detection in ys[0].detections().unwrap() {
+                                if &left_detection.class_id == &bvr_det.class_id
+                                && left_detection.bbox.intersect(&bvr_det.bbox) > 0.95 {
+                                   continue 'right_loop;
+                                }
                             }
+
+                            detections.push(bvr_det);
                         }
                     }
                 }
             }
         }
-        else {
-            let ys = yolo.forward(&[bvr_image.image], false)?;
-
-            match ys[0].detections() {
-                None => {}
-                _ => {
-                    detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
-                }
-            }
-        }
-
-        // remove any detection that's not in the wanted_labels vector
-        if let Some(wanted) = bvr_image.wanted_labels {
-            if !wanted.is_empty() {
-                detections.retain(|detection| wanted.contains(&(detection.class_id as u16)));
-            }
-        }
-        
-        detection_state.det_tx.send(Box::from(detections))?;
-
-        println!("Loop time: {:?}", detect_time.elapsed());
-
-        continue
     }
+    else {
+        let ys = yolo.forward(&[bvr_image.clone_image()], false)?;
+
+        match ys[0].detections() {
+            None => {}
+            _ => {
+                detections = ys[0].detections().expect("Error parsing results vector!").to_vec();
+            }
+        }
+    }
+
+    // remove any detection that's not in the wanted_labels vector
+    if let Some(wanted) = bvr_image.wanted_labels {
+        if !wanted.is_empty() {
+            detections.retain(|detection| wanted.contains(&detection.get_class_id()));
+        }
+    }
+
+    Ok(detections)
 }
 
 // /// The python detector is still a WIP

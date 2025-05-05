@@ -6,30 +6,17 @@ use ndarray::{s, Axis};
 use rayon::prelude::*;
 use regex::Regex;
 
-use crate::common::{BoxType, BvrDetection, ModelVersion, YoloPreds};
+use crate::common::{BoxType, BvrDetection, ModelVersion, BvrOrtYOLO, YoloPreds};
 use crate::data::{ConfigOrt, DynConf, ImageOps, MinOptMax, Xs, X, Y};
 use crate::detection_runners::inference_process::InferenceProcess;
 use crate::detection_runners::ort_detector::OrtEngine;
 
-#[derive(Debug)]
-pub struct OrtYOLO {
-    engine: OrtEngine,
-    nc: usize,
-    height: MinOptMax,
-    width: MinOptMax,
-    batch: MinOptMax,
-    confs: DynConf,
-    iou: f32,
-    names: Vec<String>,
-    layout: YoloPreds,
-    version: Option<ModelVersion>,
-}
 
-impl InferenceProcess for OrtYOLO {
+
+impl InferenceProcess for BvrOrtYOLO {
     type Input = DynamicImage;
 
     fn new(options: ConfigOrt) -> Result<Self> {
-
         let engine = OrtEngine::new(&options)?;
         let (batch, height, width) = (
             engine.batch().to_owned(),
@@ -262,7 +249,7 @@ impl InferenceProcess for OrtYOLO {
 }
 
 #[allow(dead_code)]
-impl OrtYOLO {
+impl BvrOrtYOLO {
     pub fn batch(&self) -> usize {
         self.batch.opt()
     }

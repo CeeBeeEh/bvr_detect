@@ -140,6 +140,10 @@ impl BvrDetection {
         self.label = Some(label.to_string());
         self
     }
+    
+    pub fn get_class_id(&self) -> u16 {
+        (&self.class_id * 1) as u16        
+    }
 
     pub fn get_label(&self) -> String {
         self.label.clone().unwrap_or("Unknown".to_string())
@@ -165,8 +169,15 @@ impl BvrDetection {
 
     pub fn print_detection(&self) {
         println!(
-            "Detection: ID: {}, Class: {}, BBox: {:?}, Confidence: {:.2}",
-            self.id, self.class_id, self.bbox, self.confidence
+            "Detection - ID: {}, Class: {}, Label: {}, Confidence: {:.2}",
+            self.id, self.class_id, self.label.clone().unwrap_or("unknown".to_string()), self.confidence
+        );
+    }
+
+    pub fn print_detection_with_box(&self) {
+        println!(
+            "Detection - ID: {}, Class: {}, Label: {}, BBox: {:?}, Confidence: {:.2}",
+            self.id, self.class_id, self.label.clone().unwrap_or("unknown".to_string()), self.bbox, self.confidence
         );
     }
 }

@@ -26,15 +26,13 @@ async fn no_detections() {
         inference_processor: InferenceProcessor::ORT,
         model_version,
         conf_threshold: 0.3,
-        width: 640,
-        height: 640,
+        width: 960,
+        height: 960,
+        rect: true,
         split_wide_input: true,
     };
 
     let _now = Instant::now();
-
-    let _tx = mpsc::channel::<BvrImage>();
-    let _rx = mpsc::channel::<Vec<BvrDetection>>();
 
     let image = image::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(image_path)).unwrap();
     let (img_width, img_height) = image.dimensions();
@@ -48,7 +46,10 @@ async fn no_detections() {
         wanted_labels: None,
     };
 
-    let _ = bvr_detect::init_detector(model_details, true);
+    let mut yolo = match bvr_detect::init_detector(&model_details, true) {
+        Ok(yolo) => yolo,
+        _ => panic!("Failed to initialize YOLO model")
+    };
 
     let now = Instant::now();
     let mut elapsed = now.elapsed();
@@ -56,7 +57,7 @@ async fn no_detections() {
     let mut count = 0;
 
     while count < loop_count {
-        let result = bvr_detect::run_detection(bvr_image.clone()).await.unwrap();
+        let result = bvr_detect::run_detection(&mut yolo, bvr_image.clone(), &model_details).unwrap();
         assert_eq!(result.len(), 0);
 
         println!("TIME | Total={:.2?} | {}th detection_runners={:.2?}", now.elapsed(), count, now.elapsed() - elapsed);

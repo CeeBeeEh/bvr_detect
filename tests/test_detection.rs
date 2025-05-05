@@ -1,7 +1,7 @@
 extern crate bvr_detect;
 
+use std::future::Future;
 use std::path::Path;
-use std::sync::mpsc;
 use std::time::Instant;
 use ab_glyph::{FontRef, PxScale};
 use image::GenericImageView;
@@ -20,8 +20,8 @@ async fn detection() {
     let onnx_path = "../models/yolov11/yolo11n.onnx".to_string();
     let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.20.1".to_string();
     let classes_path = "../models/labels_80.txt".to_string();
-    //let image_path = "../test_images/8_people.jpg";
-    let image_path = "../test_images/signal-2024-09-26-150939_003.jpg";
+    let image_path = "tests/8_people.jpg";
+    //let image_path = "../test_images/signal-2024-09-26-150939_003.jpg";
     let yolo_ver = "yolov11".to_string();
     /////////////////////
 
@@ -35,15 +35,13 @@ async fn detection() {
         inference_processor: InferenceProcessor::ORT,
         model_version,
         conf_threshold: 0.3,
-        width: 640,
-        height: 640,
+        width: 960,
+        height: 960,
+        rect: false,
         split_wide_input: true,
     };
 
     let _now = Instant::now();
-
-    let _tx = mpsc::channel::<BvrImage>();
-    let _rx = mpsc::channel::<Vec<BvrDetection>>();
 
     let image = image::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(image_path)).unwrap();
     let (img_width, img_height) = image.dimensions();
@@ -57,7 +55,10 @@ async fn detection() {
         wanted_labels: None,
     };
 
-    bvr_detect::init_detector(model_details, true).await;
+    let mut yolo = match bvr_detect::init_detector(&model_details, true) {
+        Ok(yolo) => yolo,
+        _ => panic!("Failed to initialize YOLO model")
+    };
 
     let now = Instant::now();
     let mut elapsed = now.elapsed();
@@ -65,7 +66,7 @@ async fn detection() {
     let mut count = 0;
 
     while count < loop_count {
-        let result = bvr_detect::run_detection(bvr_image.clone()).await.unwrap();
+        let result = bvr_detect::run_detection(&mut yolo, bvr_image.clone(), &model_details).unwrap();
         //assert_eq!(result.len(), 8);
 
         let mut detection_thres = String::from("Confidence: ");

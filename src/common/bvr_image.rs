@@ -1,9 +1,8 @@
-use image::{DynamicImage, GenericImageView};
-use crate::data::LabelThreshold;
+use image::{GenericImageView};
 
 #[derive(Debug, Clone)]
 pub struct BvrImage {
-    pub image: DynamicImage,
+    pub image: image::DynamicImage,
     pub img_width: u32,
     pub img_height: u32,
     pub threshold: f32,
@@ -12,7 +11,7 @@ pub struct BvrImage {
 }
 
 impl BvrImage {
-    pub fn new(image: DynamicImage, threshold: f32, augment: bool, label_filters: Option<Vec<u16>>) -> Self {
+    pub fn new(image: image::DynamicImage, threshold: f32, augment: bool, label_filters: Option<Vec<u16>>) -> Self {
         let (img_width, img_height) = image.dimensions();
         Self {
             image,
@@ -35,5 +34,25 @@ impl BvrImage {
             },
             None => { false }
         }        
+    }
+    
+    pub fn clone_image(&self) -> image::DynamicImage {
+        self.image.clone()
+    }
+
+    pub fn get_img_width(&self) -> u32 {
+        self.img_width
+    }
+
+    pub fn get_img_height(&self) -> u32 {
+        self.img_height
+    }
+    
+    pub fn get_threshold(&self) -> f32 {
+        self.threshold
+    }
+
+    pub fn get_wanted_labels(&self) -> Option<&Vec<u16>> {
+        self.wanted_labels.as_ref()
     }
 }
