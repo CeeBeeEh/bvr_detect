@@ -207,38 +207,54 @@ impl OrtEngine {
             .with_profile_min_shapes(spec_min)
             .with_profile_opt_shapes(spec_opt)
             .with_profile_max_shapes(spec_max);
-        if trt.is_available()? && trt.register(builder).is_ok() {
-            log::info!("🐢 Initial model serialization with TensorRT may require a wait...\n");
+        if trt.is_available()? {
+            match trt.register(builder) {
+                Ok(_) => { }
+                Err(err) => { anyhow::bail!("{CROSS_MARK} TensorRT initialization failed: {:?}", err) }
+            }
+            log::info!("🐢 Initial model serialization with TensorRT may takes some time...\n");
             Ok(())
         } else {
-            anyhow::bail!("{CROSS_MARK} TensorRT initialization failed")
+            anyhow::bail!("{CROSS_MARK} TensorRT execution provider not available")
         }
     }
 
     fn build_cuda(builder: &mut SessionBuilder, device_id: usize) -> Result<()> {
         let ep = CUDAExecutionProvider::default().with_device_id(device_id as i32);
-        if ep.is_available()? && ep.register(builder).is_ok() {
+        if ep.is_available()? {
+            match ep.register(builder) {
+                Ok(_) => { }
+                Err(err) => { anyhow::bail!("{CROSS_MARK} CUDA initialization failed: {:?}", err) }
+            }
             Ok(())
         } else {
-            anyhow::bail!("{CROSS_MARK} CUDA initialization failed")
+            anyhow::bail!("{CROSS_MARK} CUDA execution provider not available")
         }
     }
 
     fn build_coreml(builder: &mut SessionBuilder) -> Result<()> {
         let ep = CoreMLExecutionProvider::default().with_subgraphs(); //.with_ane_only();
-        if ep.is_available()? && ep.register(builder).is_ok() {
+        if ep.is_available()? {
+            match ep.register(builder) {
+                Ok(_) => { }
+                Err(err) => { anyhow::bail!("{CROSS_MARK} CoreML initialization failed: {:?}", err) }
+            }
             Ok(())
         } else {
-            anyhow::bail!("{CROSS_MARK} CoreML initialization failed")
+            anyhow::bail!("{CROSS_MARK} CoreML execution provider not available")
         }
     }
 
     fn build_cpu(builder: &mut SessionBuilder) -> Result<()> {
         let ep = CPUExecutionProvider::default();
-        if ep.is_available()? && ep.register(builder).is_ok() {
+        if ep.is_available()? {
+            match ep.register(builder) {
+                Ok(_) => { }
+                Err(err) => { anyhow::bail!("{CROSS_MARK} CPU initialization failed: {:?}", err) }
+            }
             Ok(())
         } else {
-            anyhow::bail!("{CROSS_MARK} CPU initialization failed")
+            anyhow::bail!("{CROSS_MARK} CPU execution provider not available")
         }
     }
 

@@ -28,7 +28,8 @@ impl InferenceProcess for BvrOrtYOLO {
         let (version, layout) = match options.yolo_version {
             Some(ver) => match ver {
                 ModelVersion::YoloV5 | ModelVersion::YoloV6 | ModelVersion::YoloV7 => (Some(ver), YoloPreds::n_a_cxcywh_confclss()),
-                ModelVersion::YoloV8 | ModelVersion::YoloV9 | ModelVersion::YoloV11 => (Some(ver), YoloPreds::n_cxcywh_clss_a()),
+                ModelVersion::YoloV8 | ModelVersion::YoloV9 
+                | ModelVersion::YoloV11 | ModelVersion::YoloV12 => (Some(ver), YoloPreds::n_cxcywh_clss_a()),
                 ModelVersion::YoloV10 => (Some(ver), YoloPreds::n_a_xyxy_confcls().apply_nms(false)),
             },
             None => match options.yolo_preds {

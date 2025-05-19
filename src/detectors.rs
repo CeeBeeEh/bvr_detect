@@ -18,9 +18,6 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
         let img_left = bvr_image.image.crop_imm(0, 0, bvr_image.get_img_height(), bvr_image.get_img_height());
         let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.get_img_width(), bvr_image.get_img_height());
 
-        img_left.save("/mnt/4TB/Development/Bvr-Project/models/bvr_yolo/eval_images/_left.jpg").expect("TODO: panic message");
-        img_right.save("/mnt/4TB/Development/Bvr-Project/models/bvr_yolo/eval_images/_right.jpg").expect("TODO: panic message");
-
         let ys = yolo.forward(&[img_left], false)?;
         let ys_right = yolo.forward(&[img_right], false)?;
 

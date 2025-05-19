@@ -12,6 +12,7 @@ pub enum ModelVersion {
     YoloV9,
     YoloV10,
     #[default] YoloV11,
+    YoloV12,
 }
 
 impl ModelVersion {
@@ -24,6 +25,7 @@ impl ModelVersion {
             Self::YoloV9 => "YoloV9".to_string(),
             Self::YoloV10 => "YoloV10".to_string(),
             Self::YoloV11 => "YoloV11".to_string(),
+            Self::YoloV12 => "YoloV12".to_string(),
         }
     }
 
@@ -36,6 +38,7 @@ impl ModelVersion {
             "yolov9" => ModelVersion::YoloV9,
             "yolov10" => ModelVersion::YoloV10,
             "yolov11" => ModelVersion::YoloV11,
+            "yolov12" => ModelVersion::YoloV12,
             _ => ModelVersion::YoloV11,
         }
     }
