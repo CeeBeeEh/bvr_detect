@@ -10,6 +10,8 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
     let detect_time = Instant::now();
 
     let mut detections: Vec<BvrDetection> = vec![];
+    
+    let threshold = bvr_image.threshold;
 
     // A ratio of 1.777~ is 16/9
     if model_details.split_wide_input && bvr_image.get_ratio() > 1.78 {
@@ -18,8 +20,8 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
         let img_left = bvr_image.image.crop_imm(0, 0, bvr_image.get_img_height(), bvr_image.get_img_height());
         let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.get_img_width(), bvr_image.get_img_height());
 
-        let ys = yolo.forward(&[img_left], false)?;
-        let ys_right = yolo.forward(&[img_right], false)?;
+        let ys = yolo.forward(&[img_left], &[vec![threshold]], false)?;
+        let ys_right = yolo.forward(&[img_right], &[vec![threshold]], false)?;
 
         match ys[0].detections() {
             None => {}
@@ -49,7 +51,7 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
         }
     }
     else {
-        let ys = yolo.forward(&[bvr_image.clone_image()], false)?;
+        let ys = yolo.forward(&[bvr_image.clone_image()], &[vec![threshold]], false)?;
 
         match ys[0].detections() {
             None => {}
@@ -79,9 +81,9 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
     THIS IS NOT READY AND WILL CAUSE A PANIC
     */
 
-    let python_file = std::fs::read_to_string("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/detector.py")?;
+    let python_file = std::fs::read_to_string("../bvr_detector_lib_python/detector.py")?;
 
-    let model_path = "/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/yolov9-t.pt";
+    let model_path = "../bvr_detector_lib_python/yolov9-t.pt";
 
     pyo3::prepare_freethreaded_python();
 
@@ -89,10 +91,10 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
         let sys = py.import_bound("sys").unwrap();
         let path = sys.getattr("path").unwrap();
         //path.call_method1("insert", (0, model_path )).unwrap();
-        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python/venv3/lib/python3.10/site-packages",)).unwrap();  // append venv path
-        path.call_method1("append", ("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python",)).unwrap();
+        path.call_method1("append", ("../bvr_detector_lib_python/venv3/lib/python3.10/site-packages",)).unwrap();  // append venv path
+        path.call_method1("append", ("../bvr_detector_lib_python",)).unwrap();
 
-        for entry in fs::read_dir("/mnt/4TB/Development/Bvr-Project/bvr_detector_lib_python").unwrap() {
+        for entry in fs::read_dir("../bvr_detector_lib_python").unwrap() {
             let entry = entry.unwrap();
             let entry_path = entry.path();
 
@@ -119,7 +121,7 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
             Err(e) => { println!("{:?}", e) }
         }
 
-        let img_path = "/mnt/4TB/Development/Bvr-Project/bvr_detect/tests/8_people.jpg";
+        let img_path = "../bvr_detect/tests/8_people.jpg";
 
         let dyn_image = image::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(img_path)).unwrap();
 

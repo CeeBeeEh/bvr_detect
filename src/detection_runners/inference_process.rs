@@ -4,6 +4,7 @@ use crate::utils;
 
 pub trait InferenceProcess: Sized {
     type Input; // DynamicImage
+    type Thresholds;
 
     /// Creates a new instance of the model with the given options.
     fn new(options: ConfigOrt) -> anyhow::Result<Self>;
@@ -15,18 +16,18 @@ pub trait InferenceProcess: Sized {
     fn inference(&mut self, xs: Xs) -> anyhow::Result<Xs>;
 
     /// Post-process the model's output.
-    fn postprocess(&self, xs: Xs, xs0: &[Self::Input]) -> anyhow::Result<Vec<Y>>;
+    fn postprocess(&self, xs: Xs, xs0: &[Self::Input], thresh: &[Self::Thresholds]) -> anyhow::Result<Vec<Y>>;
 
     /// Executes the full pipeline.
-    fn run(&mut self, xs: &[Self::Input]) -> anyhow::Result<Vec<Y>> {
+    fn run(&mut self, xs: &[Self::Input], thresh: &[Self::Thresholds]) -> anyhow::Result<Vec<Y>> {
         let ys = self.preprocess(xs)?;
         let ys = self.inference(ys)?;
-        let ys = self.postprocess(ys, xs)?;
+        let ys = self.postprocess(ys, xs, thresh)?;
         Ok(ys)
     }
 
     /// Executes the full pipeline.
-    fn forward(&mut self, xs: &[Self::Input], profile: bool) -> anyhow::Result<Vec<Y>> {
+    fn forward(&mut self, xs: &[Self::Input], thresh: &[Self::Thresholds], profile: bool) -> anyhow::Result<Vec<Y>> {
         let detect_time =  Instant::now();
 
         let t_pre = std::time::Instant::now();
@@ -43,7 +44,7 @@ pub trait InferenceProcess: Sized {
         _detect_elapsed = utils::trace(true, "TIME", "Detection run", detect_time, _detect_elapsed);
 
         let t_post = std::time::Instant::now();
-        let ys = self.postprocess(ys, xs)?;
+        let ys = self.postprocess(ys, xs, thresh)?;
         let t_post = t_post.elapsed();
 
         _detect_elapsed = utils::trace(true, "TIME", "Postprocessing", detect_time, _detect_elapsed);

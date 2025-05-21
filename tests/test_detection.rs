@@ -1,13 +1,12 @@
 extern crate bvr_detect;
 
-use std::future::Future;
 use std::path::Path;
 use std::time::Instant;
 use ab_glyph::{FontRef, PxScale};
 use image::GenericImageView;
 use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
-use bvr_detect::common::{BvrDetection, BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
+use bvr_detect::common::{BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
 
 mod colours;
 
@@ -34,7 +33,7 @@ async fn detection() {
         inference_device: InferenceDevice::CUDA(0),
         inference_processor: InferenceProcessor::ORT,
         model_version,
-        conf_threshold: 0.3,
+        conf_threshold: 0.8,
         width: 960,
         height: 960,
         rect: false,
@@ -50,7 +49,7 @@ async fn detection() {
         image,
         img_width,
         img_height,
-        threshold: 0.5,
+        threshold: model_details.conf_threshold,
         augment: false,
         wanted_labels: None,
     };

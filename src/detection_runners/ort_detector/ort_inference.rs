@@ -11,10 +11,9 @@ use crate::data::{ConfigOrt, DynConf, ImageOps, MinOptMax, Xs, X, Y};
 use crate::detection_runners::inference_process::InferenceProcess;
 use crate::detection_runners::ort_detector::OrtEngine;
 
-
-
 impl InferenceProcess for BvrOrtYOLO {
     type Input = DynamicImage;
+    type Thresholds = Vec<f32>;
 
     fn new(options: ConfigOrt) -> Result<Self> {
         let engine = OrtEngine::new(&options)?;
@@ -117,7 +116,7 @@ impl InferenceProcess for BvrOrtYOLO {
         self.engine.run(xs)
     }
 
-    fn postprocess(&self, xs: Xs, xs0: &[Self::Input]) -> Result<Vec<Y>> {
+    fn postprocess(&self, xs: Xs, xs0: &[Self::Input], thresh: &[Self::Thresholds]) -> Result<Vec<Y>> {
         let ys: Vec<Y> = xs[0]
             .axis_iter(Axis(0))
             .into_par_iter()
@@ -135,8 +134,7 @@ impl InferenceProcess for BvrOrtYOLO {
 
                 let image_width = xs0[idx].width() as f32;
                 let image_height = xs0[idx].height() as f32;
-                let ratio =
-                    (self.width() as f32 / image_width).min(self.height() as f32 / image_height);
+                let ratio = (self.width() as f32 / image_width).min(self.height() as f32 / image_height);
 
                 let y_bboxes = slice_bboxes?
                     .axis_iter(Axis(0))
@@ -164,8 +162,16 @@ impl InferenceProcess for BvrOrtYOLO {
                         };
 
                         // filtering low scores
-                        if confidence < self.confs[class_id] {
-                            return None;
+                        //if confidence < self.confs[class_id] {
+                        if thresh[idx].len() > 1 {
+                            if confidence < thresh[idx][class_id] {
+                                return None;
+                            }
+                        }
+                        else {
+                            if confidence < thresh[idx][0] {
+                                return None;
+                            }
                         }
 
                         // Bounding boxes
@@ -215,7 +221,7 @@ impl InferenceProcess for BvrOrtYOLO {
                         };
 
                         // filtering unreliably small objects
-                        if w < 15.0 || h < 15.0 {
+                        if w < 20.0 || h < 20.0 {
                             return None;
                         }
 

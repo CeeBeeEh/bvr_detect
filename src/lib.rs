@@ -16,7 +16,7 @@ use crate::detection_runners::inference_process::InferenceProcess;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub fn init_detector(model_details: &ModelConfig, is_test: bool) -> anyhow::Result<BvrOrtYOLO> {
-    println!("===========\ninit_detector 1\n===========");
+    println!("===========\ninit_detector\n===========");
     let ort_options = ConfigOrt::new()
         .with_model(&model_details.weights_path)?
         .with_ort_lib_path(&model_details.ort_lib_path)?
@@ -33,7 +33,7 @@ pub fn init_detector(model_details: &ModelConfig, is_test: bool) -> anyhow::Resu
 
     log::info!("Initializing ORT session with ({}) execution provider", model_details.inference_device.to_string());
     let mut yolo = BvrOrtYOLO::new(ort_options)?;
-    yolo.run(&[DynamicImage::new_rgb8(960, 960)])?;
+    yolo.run(&[DynamicImage::new_rgb8(960, 960)], &[vec![0.5]])?;
     Ok(yolo)
 }
 
