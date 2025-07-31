@@ -333,103 +333,6 @@ impl OrtEngine {
         Ok(ys)
     }
 
-/*    pub fn run(&mut self, xs: Xs) -> Result<Xs> {
-        // inputs dtype alignment
-        let mut xs_ = Vec::new();
-        let t_pre = std::time::Instant::now();
-        for (idtype, x) in self.inputs_attrs.dtypes.iter().zip(xs.into_iter()) {
-            let x_ = match &idtype {
-                TensorElementType::Float32 => Value::from_array(x.view())?.into_dyn(),
-                TensorElementType::Float16 => {
-                    Value::from_array(x.mapv(f16::from_f32).view())?.into_dyn()
-                }
-                TensorElementType::Int32 => {
-                    Value::from_array(x.mapv(|x_| x_ as i32).view())?.into_dyn()
-                }
-                TensorElementType::Int64 => {
-                    Value::from_array(x.mapv(|x_| x_ as i64).view())?.into_dyn()
-                }
-                TensorElementType::Uint8 => {
-                    Value::from_array(x.mapv(|x_| x_ as u8).view())?.into_dyn()
-                }
-                TensorElementType::Int8 => {
-                    Value::from_array(x.mapv(|x_| x_ as i8).view())?.into_dyn()
-                }
-                TensorElementType::Bool => {
-                    Value::from_array(x.mapv(|x_| x_ != 0.).view())?.into_dyn()
-                }
-                _ => todo!(),
-            };
-            xs_.push(Into::<SessionInputValue<'_>>::into(x_));
-        }
-        let t_pre = t_pre.elapsed();
-        self.infer_time.add_or_push(0, t_pre);
-
-        // inference
-        let t_run = std::time::Instant::now();
-        let outputs = self.session.run(&xs_[..])?;
-
-        let t_run = t_run.elapsed();
-        self.infer_time.add_or_push(1, t_run);
-
-        // output
-        let mut ys = Xs::new();
-        let t_post = std::time::Instant::now();
-        for (dtype, name) in self
-            .outputs_attrs
-            .dtypes
-            .iter()
-            .zip(self.outputs_attrs.names.iter())
-        {
-            let y = &outputs[name.as_str()];
-
-            let y_ = match &dtype {
-                TensorElementType::Float32 => match y.try_extract_tensor::<f32>() {
-                    Err(err) => {
-                        log::error!("Error: {:?}. Output name: {:?}", err, name);
-                        Array::zeros(0).into_dyn()
-                    }
-                    Ok(x) => x.view().into_owned(),
-                },
-                TensorElementType::Float16 => match y.try_extract_tensor::<f16>() {
-                    Err(err) => {
-                        log::error!("Error: {:?}. Output name: {:?}", err, name);
-                        Array::zeros(0).into_dyn()
-                    }
-                    Ok(x) => x.view().mapv(f16::to_f32).into_owned(),
-                },
-                TensorElementType::Int64 => match y.try_extract_tensor::<i64>() {
-                    Err(err) => {
-                        log::error!("Error: {:?}. Output name: {:?}", err, name);
-                        Array::zeros(0).into_dyn()
-                    }
-                    Ok(x) => x.view().to_owned().mapv(|x| x as f32).into_owned(),
-                },
-                _ => todo!(),
-            };
-
-            ys.push_kv(name.as_str(), X::from(y_))?;
-        }
-        let t_post = t_post.elapsed();
-        self.infer_time.add_or_push(2, t_post);
-
-        if self.profile {
-            let len = 10usize;
-            let n = 4usize;
-            log::info!("[Profile] {:>len$.n$?} ({:>len$.n$?} avg) [alignment: {:>len$.n$?} ({:>len$.n$?} avg) | inference: {:>len$.n$?} ({:>len$.n$?} avg) | to_f32: {:>len$.n$?} ({:>len$.n$?} avg)]",
-                t_pre + t_run + t_post,
-                self.infer_time.avg(),
-                t_pre,
-                self.infer_time.avg_i(0),
-                t_run,
-                self.infer_time.avg_i(1),
-                t_post,
-                self.infer_time.avg_i(2),
-            );
-        }
-        Ok(ys)
-    }*/
-
     fn tensor_postprocess(x: &DynValue, dtype: &TensorElementType) -> Result<Array<f32, IxDyn>> {
         fn _extract_and_convert<T>(x: &DynValue, map_fn: impl Fn(T) -> f32) -> Array<f32, IxDyn>
         where
@@ -443,13 +346,6 @@ impl OrtEngine {
                 }
                 Ok(x) => x.view().mapv(map_fn).into_owned(),
             }
-/*            match x.try_extract_tensor::<T>() {
-                Err(err) => {
-                    // Optional: log or debug here
-                    Array::zeros(IxDyn(&[]))
-                }
-                Ok(tensor) => tensor.view().mapv(map_fn).into_owned(),
-            }*/
         }
         let x = match dtype {
             TensorElementType::Float32 => _extract_and_convert::<f32>(x, |x| x),

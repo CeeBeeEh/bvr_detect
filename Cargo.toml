@@ -1,6 +1,6 @@
 [package]
 name = "bvr_detect"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2021"
 
 [lib]
@@ -9,7 +9,7 @@ crate-type = ["rlib"]
 path = "src/lib.rs"
 
 [dependencies]
-bvr_common = { version = "0.3.*", path = "../bvr_common" }
+bvr_common = { version = "0.4.0", path = "../bvr_common" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 image = "0.25.6"
 fast_image_resize = { version = "5.2.0", features = ["image", "rayon"] }
