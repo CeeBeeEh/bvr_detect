@@ -3,8 +3,8 @@
 //! Options for building models.
 
 use anyhow::Result;
-
-use crate::common::{InferenceDevice, ModelVersion, YoloPreds};
+use bvr_common::InferenceDevice;
+use crate::common::{ModelVersion, YoloPreds};
 use crate::data::MinOptMax;
 use crate::detection_runners::Iiix;
 
@@ -14,6 +14,8 @@ pub struct ConfigOrt {
     pub ort_lib_path: String,
     pub device: InferenceDevice,
     pub batch_size: usize,
+    pub model_width: u32,
+    pub model_height: u32,
     pub iiixs: Vec<Iiix>,
     pub profile: bool,
     pub num_dry_run: usize,
@@ -44,6 +46,8 @@ impl Default for ConfigOrt {
             device: InferenceDevice::CPU,
             profile: false,
             batch_size: 1,
+            model_height: 800,
+            model_width: 800,
             iiixs: vec![],
             num_dry_run: 3,
 
@@ -51,7 +55,7 @@ impl Default for ConfigOrt {
             trt_int8_enable: false,
             trt_fp16_enable: false,
 
-            nc: Some(80),
+            nc: Some(80), // Default COCO class number
             confs: vec![0.3f32],
             iou: None,
             names: None,
@@ -91,6 +95,16 @@ impl ConfigOrt {
         self
     }
 
+    pub fn with_model_width(mut self, n: u32) -> Self {
+        self.model_width = n;
+        self
+    }
+
+    pub fn with_model_height(mut self, n: u32) -> Self {
+        self.model_height = n;
+        self
+    }
+
     pub fn with_dry_run(mut self, n: usize) -> Self {
         self.num_dry_run = n;
         self
@@ -98,6 +112,11 @@ impl ConfigOrt {
 
     pub fn with_device(mut self, device_type: InferenceDevice) -> Self {
         self.device = device_type;
+        self
+    }
+
+    pub fn with_trt_int8(mut self, x: bool) -> Self {
+        self.trt_int8_enable = x;
         self
     }
 

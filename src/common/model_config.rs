@@ -1,5 +1,5 @@
-use crate::common::inference_device::InferenceDevice;
-use crate::common::inference_processor::InferenceProcessor;
+use bvr_common::InferenceDevice;
+use bvr_common::InferenceProcessor;
 use crate::common::model_version::ModelVersion;
 
 #[derive(Default, Debug, Clone)]

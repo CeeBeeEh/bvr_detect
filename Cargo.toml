@@ -9,12 +9,13 @@ crate-type = ["rlib"]
 path = "src/lib.rs"
 
 [dependencies]
+bvr_common = { version = "0.3.*", path = "../bvr_common" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 image = "0.25.6"
-fast_image_resize = { version = "5.1.4", features = ["image"] }
+fast_image_resize = { version = "5.2.0", features = ["image", "rayon"] }
+aksr = "0.0.3"
 #tracing-subscriber = "0.3"
 #parking_lot = "0.12"
-crossbeam-channel = "0.5.15"
 half = { version = "2.6" }
 rand = { version = "0.9.1" }
 
@@ -30,9 +31,13 @@ dirs = "6.0"
 #pyo3 = { version = "0.22", features = [ "auto-initialize"] }
 
 [dependencies.ort]
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.10"
 default-features = false
 features = ["load-dynamic", "cuda", "tensorrt", "ndarray", "half"]
+
+[dependencies.ort-sys]
+version = "=2.0.0-rc.10"
+default-features = false
 
 [dev-dependencies]
 imageproc = "0.25"

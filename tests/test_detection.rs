@@ -3,10 +3,11 @@ extern crate bvr_detect;
 use std::path::Path;
 use std::time::Instant;
 use ab_glyph::{FontRef, PxScale};
+use bvr_common::{InferenceDevice, InferenceProcessor};
 use image::GenericImageView;
 use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
-use bvr_detect::common::{BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
+use bvr_detect::common::{BvrImage, ModelConfig, ModelVersion};
 
 mod colours;
 
@@ -16,11 +17,10 @@ async fn detection() {
     /////////////////////
     // Testing variables
     let loop_count: u32 = 10;
-    let onnx_path = "../models/yolov11/yolo11n.onnx".to_string();
-    let lib_path= "../onnxruntime/linux_x64_gpu/libonnxruntime.so.1.20.1".to_string();
-    let classes_path = "../models/labels_80.txt".to_string();
+    let onnx_path = "./yolo11n.onnx".to_string();
+    let lib_path= "./libonnxruntime.so".to_string();
+    let classes_path = "./labels_80.txt".to_string();
     let image_path = "tests/8_people.jpg";
-    //let image_path = "../test_images/signal-2024-09-26-150939_003.jpg";
     let yolo_ver = "yolov11".to_string();
     /////////////////////
 
@@ -33,9 +33,9 @@ async fn detection() {
         inference_device: InferenceDevice::CUDA(0),
         inference_processor: InferenceProcessor::ORT,
         model_version,
-        conf_threshold: 0.8,
-        width: 960,
-        height: 960,
+        conf_threshold: 0.35,
+        width: 864,
+        height: 864,
         rect: false,
         split_wide_input: true,
     };
@@ -46,17 +46,17 @@ async fn detection() {
     let (img_width, img_height) = image.dimensions();
 
     let bvr_image: BvrImage = BvrImage {
-        image,
+        image: image.to_rgb8(),
         img_width,
         img_height,
         threshold: model_details.conf_threshold,
-        augment: false,
+        pad: false,
         wanted_labels: None,
     };
 
     let mut yolo = match bvr_detect::init_detector(&model_details, true) {
         Ok(yolo) => yolo,
-        _ => panic!("Failed to initialize YOLO model")
+        Err(err) => panic!("Failed to initialize YOLO model: {:?}", err)
     };
 
     let now = Instant::now();

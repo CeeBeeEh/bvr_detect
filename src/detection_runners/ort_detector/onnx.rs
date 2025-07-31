@@ -169,6 +169,9 @@ pub struct ValueInfoProto {
     /// A human-readable documentation for this value. Markdown is allowed.
     #[prost(string, tag = "3")]
     pub doc_string: ::prost::alloc::string::String,
+    /// Named metadata values; keys should be distinct.
+    #[prost(message, repeated, tag = "4")]
+    pub metadata_props: ::prost::alloc::vec::Vec<StringStringEntryProto>,
 }
 /// Nodes
 ///
@@ -202,12 +205,111 @@ pub struct NodeProto {
     /// namespace Domain
     #[prost(string, tag = "7")]
     pub domain: ::prost::alloc::string::String,
+    /// Overload identifier, used only to map this to a model-local function.
+    #[prost(string, tag = "8")]
+    pub overload: ::prost::alloc::string::String,
     /// Additional named attributes.
     #[prost(message, repeated, tag = "5")]
     pub attribute: ::prost::alloc::vec::Vec<AttributeProto>,
     /// A human-readable documentation for this node. Markdown is allowed.
     #[prost(string, tag = "6")]
     pub doc_string: ::prost::alloc::string::String,
+    /// Named metadata values; keys should be distinct.
+    #[prost(message, repeated, tag = "9")]
+    pub metadata_props: ::prost::alloc::vec::Vec<StringStringEntryProto>,
+    /// Configuration of multi-device annotations.
+    #[prost(message, repeated, tag = "10")]
+    pub device_configurations: ::prost::alloc::vec::Vec<NodeDeviceConfigurationProto>,
+}
+/// IntIntListEntryProto follows the pattern for cross-proto-version maps.
+/// See <https://developers.google.com/protocol-buffers/docs/proto3#maps>
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct IntIntListEntryProto {
+    #[prost(int64, tag = "1")]
+    pub key: i64,
+    #[prost(int64, repeated, tag = "2")]
+    pub value: ::prost::alloc::vec::Vec<i64>,
+}
+/// Multi-device configuration proto for NodeProto.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NodeDeviceConfigurationProto {
+    /// This field MUST be present for this version of the IR.
+    /// ID of the configuration. MUST match the name of a DeviceConfigurationProto.
+    #[prost(string, tag = "1")]
+    pub configuration_id: ::prost::alloc::string::String,
+    /// Sharding spec for the node.
+    #[prost(message, repeated, tag = "2")]
+    pub sharding_spec: ::prost::alloc::vec::Vec<ShardingSpecProto>,
+    /// Pipeline stage of this node.
+    #[prost(int32, tag = "3")]
+    pub pipeline_stage: i32,
+}
+/// ShardingSpecProto: This describes the sharding spec for a specific
+/// input or output tensor of a node.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShardingSpecProto {
+    /// This field MUST be present for this version of the IR.
+    /// Identifies the input or output of the node that is being sharded.
+    /// Required to match a name specified in the node's input or output list of ValueInfoProtos.
+    /// It is called `logical tensor` in subsequent descriptions.
+    #[prost(string, tag = "1")]
+    pub tensor_name: ::prost::alloc::string::String,
+    /// The following is the list of devices across which the logical
+    /// tensor is sharded or replicated.
+    #[prost(int64, repeated, tag = "2")]
+    pub device: ::prost::alloc::vec::Vec<i64>,
+    /// Each element v in above field devices may represent either a
+    /// device or a set of devices (when we want the same shard/tensor
+    /// to be replicated across a subset of devices), as indicated by
+    /// the following optional map. If the map contains an entry for v,
+    /// then v represents a device group, and the map indicates the set
+    /// of devices in that group.
+    #[prost(message, repeated, tag = "3")]
+    pub index_to_device_group_map: ::prost::alloc::vec::Vec<IntIntListEntryProto>,
+    /// The following is the sharded-shape of the tensor, consisting of
+    /// the sharding-spec for each axis of the tensor.
+    #[prost(message, repeated, tag = "4")]
+    pub sharded_dim: ::prost::alloc::vec::Vec<ShardedDimProto>,
+}
+/// ShardedDimProto: This describes the sharding spec for a single
+/// axis of a sharded tensor.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShardedDimProto {
+    /// This field MUST be present for this version of the IR.
+    /// The axis this sharding corresponds to. Must be in the range of
+    /// \[-r, r - 1\], where r is the rank of the tensor. Negative axis values means
+    /// counting from the back.
+    #[prost(int64, tag = "1")]
+    pub axis: i64,
+    /// Describes how the tensor on the provided axis is sharded.
+    /// The common-case is described by a single instance of SimpleShardedDimProto.
+    /// Multiple instances can be used to handle cases where a sharded
+    /// tensor is reshaped, fusing multiple axes into one.
+    #[prost(message, repeated, tag = "2")]
+    pub simple_sharding: ::prost::alloc::vec::Vec<SimpleShardedDimProto>,
+}
+/// SimpleShardedDimProto: Indicates that N blocks are divided into M shards.
+/// N is allowed to be symbolic where M is required to be a constant.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SimpleShardedDimProto {
+    /// This field MUST be present for this version of the IR.
+    /// Number of shards to split dim into.
+    #[prost(int64, tag = "3")]
+    pub num_shards: i64,
+    /// Dimension value to be sharded.
+    #[prost(oneof = "simple_sharded_dim_proto::Dim", tags = "1, 2")]
+    pub dim: ::core::option::Option<simple_sharded_dim_proto::Dim>,
+}
+/// Nested message and enum types in `SimpleShardedDimProto`.
+pub mod simple_sharded_dim_proto {
+    /// Dimension value to be sharded.
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Dim {
+        #[prost(int64, tag = "1")]
+        DimValue(i64),
+        #[prost(string, tag = "2")]
+        DimParam(::prost::alloc::string::String),
+    }
 }
 /// Training information
 /// TrainingInfoProto stores information for training a model.
@@ -411,6 +513,25 @@ pub struct ModelProto {
     /// is not allowed.
     #[prost(message, repeated, tag = "25")]
     pub functions: ::prost::alloc::vec::Vec<FunctionProto>,
+    /// Describes different target configurations for a multi-device use case.
+    /// A model MAY describe multiple multi-device configurations for execution.
+    #[prost(message, repeated, tag = "26")]
+    pub configuration: ::prost::alloc::vec::Vec<DeviceConfigurationProto>,
+}
+/// DeviceConfigurationProto describes a multi-device configuration for a model.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeviceConfigurationProto {
+    /// This field MUST be present for this version of the IR.
+    /// Name of the configuration.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// This field MUST be present for this version of the IR.
+    /// Number of devices inside this configuration.
+    #[prost(int32, tag = "2")]
+    pub num_devices: i32,
+    /// Optional names of the devices. MUST be length of num_devices if provided.
+    #[prost(string, repeated, tag = "3")]
+    pub device: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// StringStringEntryProto follows the pattern for cross-proto-version maps.
 /// See <https://developers.google.com/protocol-buffers/docs/proto3#maps>
@@ -478,6 +599,9 @@ pub struct GraphProto {
     /// which means, tensor 'a_scale' and tensor 'a_zero_point' are scale and zero point of tensor 'a' in the model.
     #[prost(message, repeated, tag = "14")]
     pub quantization_annotation: ::prost::alloc::vec::Vec<TensorAnnotation>,
+    /// Named metadata values; keys should be distinct.
+    #[prost(message, repeated, tag = "16")]
+    pub metadata_props: ::prost::alloc::vec::Vec<StringStringEntryProto>,
 }
 /// Tensors
 ///
@@ -503,11 +627,19 @@ pub struct TensorProto {
     /// When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
     #[prost(float, repeated, tag = "4")]
     pub float_data: ::prost::alloc::vec::Vec<f32>,
-    /// For int32, uint8, int8, uint16, int16, bool, float8, and float16 values
-    /// float16 and float8 values must be bit-wise converted to an uint16_t prior
-    /// to writing to the buffer.
+    /// For int32, uint8, int8, uint16, int16, uint4, int4, bool, (b)float16, float8, and float4:
+    /// - (b)float16 and float8 values MUST be converted bit-wise into an unsigned integer
+    ///    representation before being written to the buffer.
+    /// - Each pair of uint4, int4, and float4 values MUST be packed as two 4-bit elements into a single byte.
+    ///    The first element is stored in the 4 least significant bits (LSB),
+    ///    and the second element is stored in the 4 most significant bits (MSB).
+    ///
+    /// Consequently:
+    /// - For data types with a bit-width of 8 or greater, each `int32_data` stores one element.
+    /// - For 4-bit data types, each `int32_data` stores two elements.
+    ///
     /// When this field is present, the data_type field MUST be
-    /// INT32, INT16, INT8, UINT16, UINT8, BOOL, FLOAT16, BFLOAT16, FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ
+    /// INT32, INT16, INT8, INT4, UINT16, UINT8, UINT4, BOOL, FLOAT16, BFLOAT16, FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ, FLOAT4E2M1
     #[prost(int32, repeated, tag = "5")]
     pub int32_data: ::prost::alloc::vec::Vec<i32>,
     /// For strings.
@@ -539,6 +671,7 @@ pub struct TensorProto {
     /// Complex64 elements must be written as two consecutive FLOAT values, real component first.
     /// Complex128 elements must be written as two consecutive DOUBLE values, real component first.
     /// Boolean type MUST be written one byte per tensor element (00000001 for true, 00000000 for false).
+    /// uint4 and int4 values must be packed to 4bitx2, the first element is stored in the 4 LSB and the second element is stored in the 4 MSB.
     ///
     /// Note: the advantage of specific field rather than the raw_data field is
     /// that in some cases (e.g. int data), protobuf does a better packing via
@@ -574,6 +707,9 @@ pub struct TensorProto {
     /// UINT32 or UINT64
     #[prost(uint64, repeated, tag = "11")]
     pub uint64_data: ::prost::alloc::vec::Vec<u64>,
+    /// Named metadata values; keys should be distinct.
+    #[prost(message, repeated, tag = "16")]
+    pub metadata_props: ::prost::alloc::vec::Vec<StringStringEntryProto>,
 }
 /// Nested message and enum types in `TensorProto`.
 pub mod tensor_proto {
@@ -641,6 +777,14 @@ pub mod tensor_proto {
         Float8e5m2 = 19,
         /// follows IEEE 754, supports nan, inf, mostly used for gradients, no negative zero
         Float8e5m2fnuz = 20,
+        /// 4-bit integer data types
+        ///
+        /// Unsigned integer in range \[0, 15\]
+        Uint4 = 21,
+        /// Signed integer in range \[-8, 7\], using two's-complement representation
+        Int4 = 22,
+        /// 4-bit floating point data types
+        Float4e2m1 = 23,
     }
     impl DataType {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -670,6 +814,9 @@ pub mod tensor_proto {
                 DataType::Float8e4m3fnuz => "FLOAT8E4M3FNUZ",
                 DataType::Float8e5m2 => "FLOAT8E5M2",
                 DataType::Float8e5m2fnuz => "FLOAT8E5M2FNUZ",
+                DataType::Uint4 => "UINT4",
+                DataType::Int4 => "INT4",
+                DataType::Float4e2m1 => "FLOAT4E2M1",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -936,6 +1083,19 @@ pub struct FunctionProto {
     /// the FunctionProto.
     #[prost(string, tag = "10")]
     pub domain: ::prost::alloc::string::String,
+    /// The overload identifier of the function.
+    /// This is part of the unique-id (domain, name, overload) of FunctionProtos in a model.
+    #[prost(string, tag = "13")]
+    pub overload: ::prost::alloc::string::String,
+    /// Information for the values in the function. The ValueInfoProto.name's
+    /// must be distinct and refer to names in the function (including inputs,
+    /// outputs, and intermediate values). It is optional for a value to appear
+    /// in value_info list.
+    #[prost(message, repeated, tag = "12")]
+    pub value_info: ::prost::alloc::vec::Vec<ValueInfoProto>,
+    /// Named metadata values; keys should be distinct.
+    #[prost(message, repeated, tag = "14")]
+    pub metadata_props: ::prost::alloc::vec::Vec<StringStringEntryProto>,
 }
 /// Versioning
 ///
@@ -978,7 +1138,7 @@ pub enum Version {
     ///    - Add sparse initializers
     IrVersion2019919 = 6,
     /// IR VERSION 7 published on May 8, 2020
-    /// - Add support to allow function body graph to rely on multiple external opreator sets.
+    /// - Add support to allow function body graph to rely on multiple external operator sets.
     /// - Add a list to promote inference graph's initializers to global and
     ///    mutable variables. Global variables are visible in all graphs of the
     ///    stored models.
@@ -996,7 +1156,13 @@ pub enum Version {
     /// IR VERSION 9 published on May 5, 2023
     /// Added AttributeProto to FunctionProto so that default attribute values can be set.
     /// Added FLOAT8E4M3FN, FLOAT8E4M3FNUZ, FLOAT8E5M2, FLOAT8E5M2FNUZ.
-    IrVersion = 9,
+    IrVersion202355 = 9,
+    /// IR VERSION 10 published on March 25, 2024
+    /// Added UINT4, INT4, overload field for functions and metadata_props on multiple proto definitions.
+    IrVersion2024325 = 10,
+    /// IR VERSION 11 published on May 12, 2025
+    /// Added FLOAT4E2M1, multi-device protobuf classes.
+    IrVersion = 11,
 }
 impl Version {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1005,16 +1171,18 @@ impl Version {
     /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
-            Version::StartVersion => "_START_VERSION",
-            Version::IrVersion20171010 => "IR_VERSION_2017_10_10",
-            Version::IrVersion20171030 => "IR_VERSION_2017_10_30",
-            Version::IrVersion2017113 => "IR_VERSION_2017_11_3",
-            Version::IrVersion2019122 => "IR_VERSION_2019_1_22",
-            Version::IrVersion2019318 => "IR_VERSION_2019_3_18",
-            Version::IrVersion2019919 => "IR_VERSION_2019_9_19",
-            Version::IrVersion202058 => "IR_VERSION_2020_5_8",
-            Version::IrVersion2021730 => "IR_VERSION_2021_7_30",
-            Version::IrVersion => "IR_VERSION",
+            Self::StartVersion => "_START_VERSION",
+            Self::IrVersion20171010 => "IR_VERSION_2017_10_10",
+            Self::IrVersion20171030 => "IR_VERSION_2017_10_30",
+            Self::IrVersion2017113 => "IR_VERSION_2017_11_3",
+            Self::IrVersion2019122 => "IR_VERSION_2019_1_22",
+            Self::IrVersion2019318 => "IR_VERSION_2019_3_18",
+            Self::IrVersion2019919 => "IR_VERSION_2019_9_19",
+            Self::IrVersion202058 => "IR_VERSION_2020_5_8",
+            Self::IrVersion2021730 => "IR_VERSION_2021_7_30",
+            Self::IrVersion202355 => "IR_VERSION_2023_5_5",
+            Self::IrVersion2024325 => "IR_VERSION_2024_3_25",
+            Self::IrVersion => "IR_VERSION",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1029,6 +1197,8 @@ impl Version {
             "IR_VERSION_2019_9_19" => Some(Self::IrVersion2019919),
             "IR_VERSION_2020_5_8" => Some(Self::IrVersion202058),
             "IR_VERSION_2021_7_30" => Some(Self::IrVersion2021730),
+            "IR_VERSION_2023_5_5" => Some(Self::IrVersion202355),
+            "IR_VERSION_2024_3_25" => Some(Self::IrVersion2024325),
             "IR_VERSION" => Some(Self::IrVersion),
             _ => None,
         }

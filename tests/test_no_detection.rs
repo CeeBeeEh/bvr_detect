@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::time::Instant;
+use bvr_common::{InferenceDevice, InferenceProcessor};
 use image::GenericImageView;
-use bvr_detect::common::{BvrImage, InferenceDevice, InferenceProcessor, ModelConfig, ModelVersion};
+use bvr_detect::common::{BvrImage, ModelConfig, ModelVersion};
 
 #[tokio::test]
 async fn no_detections() {
@@ -37,11 +38,11 @@ async fn no_detections() {
     let (img_width, img_height) = image.dimensions();
 
     let bvr_image: BvrImage = BvrImage {
-        image,
+        image: image.to_rgb8(),
         img_width,
         img_height,
         threshold: model_details.conf_threshold,
-        augment: false,
+        pad: true,
         wanted_labels: None,
     };
 

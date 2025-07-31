@@ -1,27 +1,30 @@
 use std::time::Instant;
-use crate::common::{BvrDetection, BvrImage, ModelConfig, BvrOrtYOLO};
+use image::imageops::crop_imm;
+use bvr_common::BvrDetection;
+use crate::common::{BvrImage, ModelConfig, BvrOrtYOLO};
+use crate::detection_runners::image_ops::to_fir_image;
 /*use pyo3::prelude::*;
 use pyo3::Python;
 use pyo3::types::PyByteArray;*/
 
 use crate::detection_runners::inference_process::InferenceProcess;
 
-pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, model_details: &ModelConfig) -> anyhow::Result<Vec<BvrDetection>> {
-    let detect_time = Instant::now();
-
+pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, mut bvr_image: BvrImage, model_details: &ModelConfig) -> anyhow::Result<Vec<BvrDetection>> {
     let mut detections: Vec<BvrDetection> = vec![];
     
     let threshold = bvr_image.threshold;
 
     // A ratio of 1.777~ is 16/9
-    if model_details.split_wide_input && bvr_image.get_ratio() > 1.78 {
+    if model_details.split_wide_input && bvr_image.get_ratio() > 1.8 {
         let crop_w = bvr_image.get_img_width() - &bvr_image.img_height;
-        //let crop_w = (bvr_image.img_width() / 2) as u32;
-        let img_left = bvr_image.image.crop_imm(0, 0, bvr_image.get_img_height(), bvr_image.get_img_height());
-        let img_right = bvr_image.image.crop_imm(crop_w, 0, bvr_image.get_img_width(), bvr_image.get_img_height());
+        let img_left = crop_imm(&bvr_image.image, 0, 0, bvr_image.get_img_height(), bvr_image.get_img_height());
+        let img_right = crop_imm(&bvr_image.image, crop_w, 0, bvr_image.get_img_width(), bvr_image.get_img_height());
 
-        let ys = yolo.forward(&[img_left], &[vec![threshold]], false)?;
-        let ys_right = yolo.forward(&[img_right], &[vec![threshold]], false)?;
+        let img_left = to_fir_image(image::RgbImage::from(img_left.to_image()));
+        let img_right =  to_fir_image(image::RgbImage::from(img_right.to_image()));
+
+        let ys = yolo.run(&[img_left], &[vec![threshold]], false)?;
+        let ys_right = yolo.run(&[img_right], &[vec![threshold]], false)?;
 
         match ys[0].detections() {
             None => {}
@@ -51,7 +54,7 @@ pub fn detector_onnx(is_test: bool, yolo: &mut BvrOrtYOLO, bvr_image: BvrImage, 
         }
     }
     else {
-        let ys = yolo.forward(&[bvr_image.clone_image()], &[vec![threshold]], false)?;
+        let ys = yolo.run(&[bvr_image.take_as_fir_image()], &[vec![threshold]], false)?;
 
         match ys[0].detections() {
             None => {}

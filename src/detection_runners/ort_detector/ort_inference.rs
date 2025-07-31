@@ -1,18 +1,20 @@
 //! File/code adapted from https://github.com/jamjamjon/usls
 
 use anyhow::Result;
-use image::DynamicImage;
+use bvr_common::BvrDetection;
+use fast_image_resize::images::Image;
 use ndarray::{s, Axis};
 use rayon::prelude::*;
 use regex::Regex;
 
-use crate::common::{BoxType, BvrDetection, ModelVersion, BvrOrtYOLO, YoloPreds};
-use crate::data::{ConfigOrt, DynConf, ImageOps, MinOptMax, Xs, X, Y};
+use crate::common::{BoxType, ModelVersion, BvrOrtYOLO, YoloPreds};
+use crate::data::{ConfigOrt, DynConf, Xs, Y};
+use crate::detection_runners::image_ops::{preprocess, ResizeMode};
 use crate::detection_runners::inference_process::InferenceProcess;
 use crate::detection_runners::ort_detector::OrtEngine;
 
 impl InferenceProcess for BvrOrtYOLO {
-    type Input = DynamicImage;
+    type Input<'a> = Image<'a>;
     type Thresholds = Vec<f32>;
 
     fn new(options: ConfigOrt) -> Result<Self> {
@@ -95,28 +97,16 @@ impl InferenceProcess for BvrOrtYOLO {
         })
     }
 
-    fn preprocess(&self, xs: &[Self::Input]) -> Result<Xs> {
-        let xs_ = X::apply(&[
-                ImageOps::Letterbox(
-                    xs,
-                    self.height() as u32,
-                    self.width() as u32,
-                    "CatmullRom",
-                    114,
-                    "auto",
-                    false,
-                ),
-                ImageOps::Normalize(0., 255.),
-                ImageOps::Nhwc2nchw,
-            ])?;
+    fn preprocess<'a>(&self, xs: &[Self::Input<'a>]) -> Result<Xs> {
+        let xs_ = preprocess(&xs, self.engine.model_height(), self.engine.model_width(), ResizeMode::Letterbox)?;
         Ok(Xs::from(xs_))
     }
 
     fn inference(&mut self, xs: Xs) -> Result<Xs> {
-        self.engine.run(xs)
+        self.engine.engine_run(xs)
     }
 
-    fn postprocess(&self, xs: Xs, xs0: &[Self::Input], thresh: &[Self::Thresholds]) -> Result<Vec<Y>> {
+    fn postprocess<'a>(&self, xs: Xs, xs0: &[Self::Input<'a>], thresh: &[Self::Thresholds]) -> Result<Vec<Y>> {
         let ys: Vec<Y> = xs[0]
             .axis_iter(Axis(0))
             .into_par_iter()

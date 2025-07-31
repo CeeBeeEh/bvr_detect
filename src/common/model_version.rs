@@ -217,6 +217,15 @@ impl YoloPreds {
             x.reversed_axes()
         };
 
+        // Validate input shape
+        if x.ndim() < 2 {
+            panic!("Input tensor must have at least 2 dimensions, got shape: {:?}", x.shape());
+        }
+
+        if x.shape()[1] < 4 {
+            panic!("Input tensor must have at least 4 columns for bboxes, got shape: {:?}", x.shape());
+        }
+
         // get each tasks slices
         let (slice_bboxes, _xs) = x.split_at(Axis(1), 4);
 

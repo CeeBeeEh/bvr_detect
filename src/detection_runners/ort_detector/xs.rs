@@ -3,9 +3,10 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use std::ops::{Deref, Index};
-
-use crate::detection_runners::ort_detector::input_wrapper::X;
+use crate::detection_runners::input_wrapper::X;
 use crate::utils::string_random;
+
+/*pub type X = Array<f32, IxDyn>;*/
 
 #[derive(Debug, Default, Clone)]
 pub struct Xs {

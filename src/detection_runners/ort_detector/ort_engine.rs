@@ -1,21 +1,33 @@
 //! File/code adapted from https://github.com/jamjamjon/usls
 
 use anyhow::Result;
-use half::f16;
-use ndarray::Array;
+use half::{bf16, f16};
+use ndarray::{Array, IxDyn};
 use prost::Message;
 use std::collections::HashSet;
+use std::path::PathBuf;
+use std::str::FromStr;
+use aksr::Builder;
+use bvr_common::InferenceDevice;
 use ort::{
-    execution_providers::{CUDAExecutionProvider, ExecutionProvider, TensorRTExecutionProvider, CPUExecutionProvider, CoreMLExecutionProvider},
+    execution_providers::{ExecutionProvider,
+                          CPUExecutionProvider,
+                          CUDAExecutionProvider,
+                          TensorRTExecutionProvider,
+                          CoreMLExecutionProvider},
     session::builder::SessionBuilder,
     session::{Session,SessionInputValue},
     tensor::TensorElementType,
     value::Value
 };
-use crate::common::{InferenceDevice, InferenceProcessor};
-use crate::data::{FsAccess, ImageOps, MinOptMax, ConfigOrt, TimeCalc, Xs, X};
+use ort::execution_providers::cuda::CUDAAttentionBackend;
+use ort::value::DynValue;
+use ort_sys::OrtCUDAProviderOptionsV2;
+use crate::data::{MinOptMax, ConfigOrt, TimeCalc, Xs};
 use crate::detection_runners::ort_detector::onnx;
 use crate::data::CROSS_MARK;
+use crate::detection_runners::image_ops::make_divisible;
+use crate::detection_runners::input_wrapper::X;
 use crate::utils::human_bytes;
 
 /// A struct for input composed of the i-th input, the ii-th dimension, and the value.
@@ -33,10 +45,15 @@ impl From<(usize, usize, MinOptMax)> for Iiix {
 }
 
 /// A struct for tensor attrs composed of the names, the dtypes, and the dimensions.
-#[derive(Debug)]
+/// ONNX Runtime tensor attributes containing names, data types, and dimensions.
+#[derive(Builder, Debug, Clone, Default)]
+/// ONNX Runtime tensor attributes containing metadata.
 pub struct OrtTensorAttr {
+    /// Tensor names.
     pub names: Vec<String>,
+    /// Tensor data types.
     pub dtypes: Vec<TensorElementType>,
+    /// Tensor dimensions for each tensor.
     pub dimss: Vec<Vec<usize>>,
 }
 
@@ -49,6 +66,8 @@ pub struct OrtEngine {
     inputs_min_opt_max: Vec<Vec<MinOptMax>>,
     inputs_attrs: OrtTensorAttr,
     outputs_attrs: OrtTensorAttr,
+    model_width: u32,
+    model_height: u32,
     profile: bool,
     model_proto: onnx::ModelProto,
     params: usize,
@@ -60,7 +79,6 @@ pub struct OrtEngine {
 impl OrtEngine {
     pub fn new(config: &ConfigOrt) -> Result<Self> {
         // onnx graph
-
         let model_proto = Self::load_onnx(&config.onnx_path)?;
 
         let graph = match &model_proto.graph {
@@ -78,7 +96,7 @@ impl OrtEngine {
             params += param;
 
             // mems
-            let param = ImageOps::make_divisible(param, byte_alignment);
+            let param = make_divisible(param, byte_alignment);
             let n = Self::nbytes_from_onnx_dtype_id(tensor_proto.data_type as usize);
             let wbmem = param * n;
             wbmems += wbmem;
@@ -86,6 +104,7 @@ impl OrtEngine {
 
         // inputs & outputs
         let inputs_attrs = Self::io_from_onnx_value_info(&initializer_names, &graph.input)?;
+        println!("INPUT ATTRIBUTES: {:?}", inputs_attrs);
         let outputs_attrs = Self::io_from_onnx_value_info(&initializer_names, &graph.output)?;
         let inputs_minoptmax =
             Self::build_inputs_minoptmax(&inputs_attrs, &config.iiixs, config.batch_size)?;
@@ -151,6 +170,8 @@ impl OrtEngine {
             inputs_min_opt_max: inputs_minoptmax,
             inputs_attrs,
             outputs_attrs,
+            model_width: config.model_width,
+            model_height: config.model_height,
             profile: config.profile,
             model_proto,
             params,
@@ -168,7 +189,7 @@ impl OrtEngine {
         fp16_enable: bool,
         engine_cache_enable: bool,
     ) -> Result<()> {
-         // auto generate shapes
+        // auto generate shapes
         let mut spec_min = String::new();
         let mut spec_opt = String::new();
         let mut spec_max = String::new();
@@ -196,13 +217,13 @@ impl OrtEngine {
             spec_opt += &s_opt;
             spec_max += &s_max;
         }
-        let p = FsAccess::Cache.path_with_subs(&["trt-cache"])?;
         let trt = TensorRTExecutionProvider::default()
             .with_device_id(device_id as i32)
             .with_int8(int8_enable)
+            .with_int8_calibration_table_name("/home/chris/Documents/BvrWebPup/trt_int8_calibration_table")
             .with_fp16(fp16_enable)
             .with_engine_cache(engine_cache_enable)
-            .with_engine_cache_path(p.to_str().unwrap())
+            .with_engine_cache_path("trt-cache")
             .with_timing_cache(false)
             .with_profile_min_shapes(spec_min)
             .with_profile_opt_shapes(spec_opt)
@@ -220,7 +241,9 @@ impl OrtEngine {
     }
 
     fn build_cuda(builder: &mut SessionBuilder, device_id: usize) -> Result<()> {
-        let ep = CUDAExecutionProvider::default().with_device_id(device_id as i32);
+        let ep = CUDAExecutionProvider::default()
+            .with_attention_backend(CUDAAttentionBackend::LEAN_ATTENTION)
+            .with_device_id(device_id as i32);
         if ep.is_available()? {
             match ep.register(builder) {
                 Ok(_) => { }
@@ -233,7 +256,9 @@ impl OrtEngine {
     }
 
     fn build_coreml(builder: &mut SessionBuilder) -> Result<()> {
-        let ep = CoreMLExecutionProvider::default().with_subgraphs(); //.with_ane_only();
+        let ep = CoreMLExecutionProvider::default()
+            .with_subgraphs(false);
+            //.with_ane_only();
         if ep.is_available()? {
             match ep.register(builder) {
                 Ok(_) => { }
@@ -258,7 +283,57 @@ impl OrtEngine {
         }
     }
 
-    pub fn run(&mut self, xs: Xs) -> Result<Xs> {
+    fn tensor_preprocess(x: &X, dtype: &TensorElementType) -> Result<DynValue> {
+        let x = match dtype {
+            TensorElementType::Float32 | TensorElementType::Float64 => {
+                Value::from_array(x.0.clone())?.into_dyn()
+            }
+            TensorElementType::Float16 => Value::from_array(x.mapv(f16::from_f32))?.into_dyn(),
+            TensorElementType::Bfloat16 => Value::from_array(x.mapv(bf16::from_f32))?.into_dyn(),
+            TensorElementType::Int8 => Value::from_array(x.mapv(|x_| x_ as i8))?.into_dyn(),
+            TensorElementType::Int16 => Value::from_array(x.mapv(|x_| x_ as i16))?.into_dyn(),
+            TensorElementType::Int32 => Value::from_array(x.mapv(|x_| x_ as i32))?.into_dyn(),
+            TensorElementType::Int64 => Value::from_array(x.mapv(|x_| x_ as i64))?.into_dyn(),
+            TensorElementType::Uint8 => Value::from_array(x.mapv(|x_| x_ as u8))?.into_dyn(),
+            TensorElementType::Uint16 => Value::from_array(x.mapv(|x_| x_ as u16))?.into_dyn(),
+            TensorElementType::Uint32 => Value::from_array(x.mapv(|x_| x_ as u32))?.into_dyn(),
+            TensorElementType::Uint64 => Value::from_array(x.mapv(|x_| x_ as u64))?.into_dyn(),
+            TensorElementType::Bool => Value::from_array(x.mapv(|x_| x_ != 0.))?.into_dyn(),
+            _ => unimplemented!(),
+        };
+        Ok(x)
+    }
+
+    pub fn engine_run(&mut self, xs: Xs) -> Result<Xs> {
+        //let mut ys = xs.derive();
+        let mut ys = Xs::new();
+
+        // alignment
+        let mut xs_ = Vec::new();
+        for (dtype, x) in self.inputs_attrs.dtypes.iter().zip(xs.into_iter()) {
+            xs_.push(Into::<SessionInputValue<'_>>::into(Self::tensor_preprocess(
+                x, dtype,
+            )?));
+        }
+
+        // run
+        let outputs_res = self.session.run(&xs_[..]);
+
+        let outputs = match outputs_res {
+            Ok(out) => out,
+            Err(err) => { panic!("{:?}", err) }
+        };
+
+        // extract
+        for (dtype, name) in self.outputs_attrs.dtypes.iter().zip(self.outputs_attrs.names.iter()) {
+            let y = Self::tensor_postprocess(&outputs[name.as_str()], dtype)?;
+            ys.push_kv(name.as_str(), X::from(y))?;
+        }
+
+        Ok(ys)
+    }
+
+/*    pub fn run(&mut self, xs: Xs) -> Result<Xs> {
         // inputs dtype alignment
         let mut xs_ = Vec::new();
         let t_pre = std::time::Instant::now();
@@ -353,6 +428,47 @@ impl OrtEngine {
             );
         }
         Ok(ys)
+    }*/
+
+    fn tensor_postprocess(x: &DynValue, dtype: &TensorElementType) -> Result<Array<f32, IxDyn>> {
+        fn _extract_and_convert<T>(x: &DynValue, map_fn: impl Fn(T) -> f32) -> Array<f32, IxDyn>
+        where
+            T: Clone + 'static + ort::tensor::PrimitiveTensorElementType,
+        {
+            // for version 2.0.0-rc.10 of ORT
+            match x.try_extract_array::<T>() {
+                Err(_err) => {
+                    //debug!("Failed to extract from ort outputs: {:?}. A default value has been generated.", err);
+                    Array::zeros(0).into_dyn()
+                }
+                Ok(x) => x.view().mapv(map_fn).into_owned(),
+            }
+/*            match x.try_extract_tensor::<T>() {
+                Err(err) => {
+                    // Optional: log or debug here
+                    Array::zeros(IxDyn(&[]))
+                }
+                Ok(tensor) => tensor.view().mapv(map_fn).into_owned(),
+            }*/
+        }
+        let x = match dtype {
+            TensorElementType::Float32 => _extract_and_convert::<f32>(x, |x| x),
+            TensorElementType::Float16 => _extract_and_convert::<f16>(x, f16::to_f32),
+            TensorElementType::Bfloat16 => _extract_and_convert::<bf16>(x, bf16::to_f32),
+            TensorElementType::Float64 => _extract_and_convert::<f64>(x, |x| x as f32),
+            TensorElementType::Int64 => _extract_and_convert::<i64>(x, |x| x as f32),
+            TensorElementType::Int32 => _extract_and_convert::<i32>(x, |x| x as f32),
+            TensorElementType::Int16 => _extract_and_convert::<i16>(x, |x| x as f32),
+            TensorElementType::Int8 => _extract_and_convert::<i8>(x, |x| x as f32),
+            TensorElementType::Uint64 => _extract_and_convert::<u64>(x, |x| x as f32),
+            TensorElementType::Uint32 => _extract_and_convert::<u32>(x, |x| x as f32),
+            TensorElementType::Uint16 => _extract_and_convert::<u16>(x, |x| x as f32),
+            TensorElementType::Uint8 => _extract_and_convert::<u8>(x, |x| x as f32),
+            TensorElementType::Bool => _extract_and_convert::<bool>(x, |x| x as u8 as f32),
+            _ => return Err(anyhow::anyhow!("Unsupported ort tensor type: {:?}", dtype)),
+        };
+
+        Ok(x)
     }
 
     fn build_inputs_minoptmax(
@@ -434,6 +550,7 @@ impl OrtEngine {
             TensorElementType::Uint8
             | TensorElementType::Int8
             | TensorElementType::Bool => 1, // u8, i8, bool
+            _ => { todo!() }
         }
     }
 
@@ -568,6 +685,10 @@ impl OrtEngine {
     pub fn batch(&self) -> &MinOptMax {
         &self.inputs_min_opt_max[0][0]
     }
+
+    pub fn model_width(&self) -> u32 { self.model_width }
+
+    pub fn model_height(&self) -> u32 { self.model_height }
 
     pub fn try_height(&self) -> Option<&MinOptMax> {
         self.inputs_min_opt_max.first().and_then(|x| x.get(2))
